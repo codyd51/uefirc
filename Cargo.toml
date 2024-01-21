@@ -9,3 +9,4 @@ edition = "2021"
 log = "0.4.20"
 uefi = "0.26.0"
 uefi-services = "0.23.0"
+ttf_renderer = { git = "https://github.com/codyd51/axle", branch="paging-demo" }
