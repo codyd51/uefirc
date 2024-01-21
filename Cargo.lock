@@ -3,15 +3,6 @@
 version = 3
 
 [[package]]
-name = "UEFIRC"
-version = "0.1.0"
-dependencies = [
- "log",
- "uefi",
- "uefi-services",
-]
-
-[[package]]
 name = "bit_field"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -150,6 +141,15 @@ dependencies = [
  "cfg-if",
  "log",
  "uefi",
+]
+
+[[package]]
+name = "uefirc"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "uefi",
+ "uefi-services",
 ]
 
 [[package]]
