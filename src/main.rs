@@ -20,8 +20,8 @@ use uefi::proto::media::block::BlockIoProtocol;
 use uefi::proto::rng::Rng;
 use uefi::table::boot::{EventType, OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol, Tpl};
 use uefi::proto::unsafe_protocol;
-use crate::ipv4::IPv4ModeData;
-use crate::tcpv4::{TCPv4CompletionToken, TCPv4ConfigData, TCPv4ConnectionState, TCPv4IoToken, TCPv4Option, TCPv4Protocol, TCPv4ServiceBindingProtocol, TCPv4TransmitData};
+use crate::ipv4::{IPv4Address, IPv4ModeData};
+use crate::tcpv4::{TCPv4ClientConnectionModeParams, TCPv4CompletionToken, TCPv4ConfigData, TCPv4ConnectionMode, TCPv4ConnectionState, TCPv4IoToken, TCPv4Option, TCPv4Protocol, TCPv4ServiceBindingProtocol, TCPv4TransmitData};
 
 fn get_tcp_service_binding_protocol(bt: &BootServices) -> ScopedProtocol<TCPv4ServiceBindingProtocol> {
     let tcp_service_binding_handle = bt.get_handle_for_protocol::<TCPv4ServiceBindingProtocol>().unwrap();
@@ -74,72 +74,22 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     let tcp_service_binding = get_tcp_service_binding_protocol(bt);
     let tcp = get_tcp_protocol(bt, &tcp_service_binding);
 
-    // 'Brutally reset' the TCP stack
-    let result = (tcp.configure)(
-        &tcp,
-        None,
-    );
-    info!("Result of brutal reset {result:?}");
+    tcp.reset_stack();
+    tcp.configure(
+        bt,
+        TCPv4ConnectionMode::Client(
+            TCPv4ClientConnectionModeParams::new(
+                IPv4Address::new(93, 158, 237, 2),
+                6665,
+            ),
+        )
+    ).expect("Failed to configure the TCP connection");
 
-    let configuration = TCPv4ConfigData::new(None);
-    info!("Configuration {configuration:?}");
-
-    loop {
-        let result = (tcp.configure)(
-            &tcp,
-            Some(&configuration),
-        );
-        if result == Status::SUCCESS {
-            info!("Configured connection! {result:?}");
-            break;
-        }
-        else if result == Status::NO_MAPPING {
-            info!("DHCP still running, waiting...");
-            bt.stall(1_000_000);
-        }
-        else {
-            info!("Error {result:?}, will spin and try again");
-            bt.stall(1_000_000);
-            //result.to_result().expect("Failed to configure TCP connection");
-        }
-    }
-
-    let mut connection_state = core::mem::MaybeUninit::<TCPv4ConnectionState>::uninit();
-    let mut connection_state_ptr = connection_state.as_mut_ptr();
-
-    let mut mode_data = core::mem::MaybeUninit::<IPv4ModeData>::uninit();
-    let mut mode_data_ptr = mode_data.as_mut_ptr();
-    unsafe {
-        (tcp.get_mode_data)(
-            &tcp,
-            Some(&mut *connection_state_ptr),
-            None,
-            Some(&mut *mode_data_ptr),
-            None,
-            None,
-        ).to_result().expect("Failed to read mode data");
-    }
-    let mode_data = unsafe { mode_data.assume_init() };
+    let mode_data = tcp.get_ipv4_mode_data();
     info!("Got mode data: {mode_data:?}");
-    let connection_state = unsafe { connection_state.assume_init() };
+    let connection_state = tcp.get_tcp_connection_state();
     info!("Got connection state: {connection_state:?}");
 
-    // Initiate the connection
-    let event = unsafe {
-        bt.create_event(
-            EventType::NOTIFY_SIGNAL,
-            Tpl::CALLBACK,
-            Some(handle_connection_operation_completed),
-            None,
-        ).unwrap()
-    };
-    let completion_token = TCPv4CompletionToken::new(event);
-    let result = (tcp.connect)(
-        &tcp,
-        &completion_token,
-    );
-    info!("Result of calling connect(): {result:?}");
-    bt.stall(1_000_000);
 
     for i in 0..10 {
         info!("Running another iteration {i}");

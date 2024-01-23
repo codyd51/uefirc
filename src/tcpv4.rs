@@ -5,17 +5,19 @@
 // HTTP: 7A59B29B-910B-4171-8242-A85A0DF25B5B BDB4C020
 
 use alloc::boxed::Box;
+use alloc::string::{String, ToString};
 use core::alloc::Layout;
 use core::ffi::c_void;
 use core::intrinsics::size_of;
 use core::ptr::{copy_nonoverlapping, null};
 use log::info;
-use uefi::{Event, Handle, Status};
+use uefi::{Error, Event, Handle, Status, StatusExt};
+use uefi::prelude::BootServices;
 
 use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput};
 use uefi::proto::media::block::BlockIoProtocol;
 use uefi::proto::rng::Rng;
-use uefi::table::boot::{OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol};
+use uefi::table::boot::{EventType, OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol, Tpl};
 use uefi::proto::unsafe_protocol;
 use crate::ipv4::{IPv4Address, IPv4ModeData};
 
@@ -36,33 +38,25 @@ pub struct TCPv4AccessPoint {
 }
 
 impl TCPv4AccessPoint {
-    fn new() -> Self {
+    fn new(connection_mode: TCPv4ConnectionMode) -> Self {
+        let (remote_ip, remote_port, is_client) = match connection_mode {
+            TCPv4ConnectionMode::Client(params) => {
+                (params.remote_ip, params.remote_port, true)
+            }
+            TCPv4ConnectionMode::Server => {
+                (IPv4Address::zero(), 0, false)
+            }
+        };
         Self {
             use_default_address: true,
             // These two fields are meaningless because we set use_default_address above
-            //station_address: IPv4Address::new(192, 168, 0, 3),
-            //subnet_mask: IPv4Address::subnet24(),
-            //station_address: IPv4Address::zero(),
-            //subnet_mask: IPv4Address::zero(),
-            /*
-            station_address: IPv4Address::new(192, 169, 0, 3),
-            subnet_mask: IPv4Address::new(255, 255, 0, 0),
-            station_port: 0,
-            remote_address: IPv4Address::new(192, 169, 0, 1),
-            remote_port: 80,
-            active_flag: true,
-             */
             station_address: IPv4Address::zero(),
             subnet_mask: IPv4Address::zero(),
-            //station_port: 1234,
+            // Chosen on-demand
             station_port: 0,
-            //remote_address: IPv4Address::zero(),
-            //remote_address: IPv4Address::new(1, 0, 169, 192),
-            //remote_address: IPv4Address::new(192, 169, 0, 1),
-            //remote_port: 80,
-            remote_address: IPv4Address::new(93, 158, 237, 2),
-            remote_port: 6665,
-            active_flag: true,
+            remote_address: remote_ip,
+            remote_port,
+            active_flag: is_client,
 
         }
     }
@@ -88,46 +82,6 @@ pub struct TCPv4Option {
     enable_path_mtu_discovery: bool,
 }
 
-impl TCPv4Option {
-    pub(crate) fn new() -> Self {
-        Self {
-            /*
-            receive_buffer_size: 32 * 1024,
-            send_buffer_size: 32 * 1024,
-            max_syn_back_log: 128,
-            connection_timeout: 20_000,
-            data_retries: 10,
-            fin_timeout: 60_000,
-            time_wait_timeout: 120_000,
-            keep_alive_probes: 9,
-            keep_alive_time: 7_200_000,
-            keep_alive_interval: 75_000,
-            enable_nagle: true,
-            enable_time_stamp: true,
-            enable_window_scaling: true,
-            enable_selective_ack: true,
-            enable_path_mtu_discovery: true,
-
-             */
-            receive_buffer_size: 1024,
-            send_buffer_size: 1024,
-            max_syn_back_log: 0,
-            connection_timeout: 0,
-            data_retries: 0,
-            fin_timeout: 0,
-            time_wait_timeout: 3,
-            keep_alive_probes: 0,
-            keep_alive_time: 0,
-            keep_alive_interval: 0,
-            enable_nagle: false,
-            enable_time_stamp: false,
-            enable_window_scaling: false,
-            enable_selective_ack: false,
-            enable_path_mtu_discovery: false,
-        }
-    }
-}
-
 #[derive(Debug)]
 #[repr(C)]
 pub struct TCPv4ConfigData<'a> {
@@ -137,13 +91,40 @@ pub struct TCPv4ConfigData<'a> {
     option: Option<&'a TCPv4Option>,
 }
 
-impl<'a> TCPv4ConfigData<'a> {
-    pub(crate) fn new(options: Option<&'a TCPv4Option>) -> Self {
+#[derive(Debug)]
+pub struct TCPv4ClientConnectionModeParams {
+    remote_ip: IPv4Address,
+    remote_port: u16,
+}
+
+impl TCPv4ClientConnectionModeParams {
+    pub fn new(
+        remote_ip: IPv4Address,
+        remote_port: u16,
+    ) -> Self {
         Self {
-            // Standard values
+            remote_ip,
+            remote_port,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum TCPv4ConnectionMode {
+    Client(TCPv4ClientConnectionModeParams),
+    // TODO(PT): There may be parameters we need to model when operating as a server
+    Server,
+}
+
+impl<'a> TCPv4ConfigData<'a> {
+    pub(crate) fn new(
+        connection_mode: TCPv4ConnectionMode,
+        options: Option<&'a TCPv4Option>,
+    ) -> Self {
+        Self {
             type_of_service: 0,
             time_to_live: 255,
-            access_point: TCPv4AccessPoint::new(),
+            access_point: TCPv4AccessPoint::new(connection_mode),
             option: options,
         }
     }
@@ -169,7 +150,7 @@ pub struct TCPv4ServiceBindingProtocol {
 #[repr(C)]
 #[unsafe_protocol("65530BC7-A359-410F-B010-5AADC7EC2B62")]
 pub struct TCPv4Protocol {
-    pub(crate) get_mode_data: extern "efiapi" fn(
+    get_mode_data_fn: extern "efiapi" fn(
         this: &Self,
         out_connection_state: Option<&mut TCPv4ConnectionState>,
         out_config_data: Option<&mut UnmodelledPointer>,
@@ -178,12 +159,12 @@ pub struct TCPv4Protocol {
         out_simple_network_mode: Option<&mut UnmodelledPointer>,
     ) -> Status,
 
-    pub(crate) configure: extern "efiapi" fn(
+    configure_fn: extern "efiapi" fn(
         this: &Self,
         config_data: Option<&TCPv4ConfigData>,
     ) -> Status,
 
-    routes: extern "efiapi" fn(
+    routes_fn: extern "efiapi" fn(
         this: &Self,
         delete_route: bool,
         subnet_address: &IPv4Address,
@@ -191,39 +172,134 @@ pub struct TCPv4Protocol {
         gateway_address: &IPv4Address,
     ) -> Status,
 
-    pub(crate) connect: extern "efiapi" fn(
+    connect_fn: extern "efiapi" fn(
         this: &Self,
         connection_token: &TCPv4CompletionToken,
     ) -> Status,
 
-    accept: extern "efiapi" fn(
+    accept_fn: extern "efiapi" fn(
         this: &Self,
         listen_token: &UnmodelledPointer,
     ) -> Status,
 
-    pub(crate) transmit: extern "efiapi" fn(
+    transmit_fn: extern "efiapi" fn(
         this: &Self,
         token: &TCPv4IoToken,
     ) -> Status,
 
-    receive: extern "efiapi" fn(
+    receive_fn: extern "efiapi" fn(
         this: &Self,
         token: &UnmodelledPointer,
     ) -> Status,
 
-    close: extern "efiapi" fn(
+    close_fn: extern "efiapi" fn(
         this: &Self,
         close_token: &UnmodelledPointer,
     ) -> Status,
 
-    cancel: extern "efiapi" fn(
+    cancel_fn: extern "efiapi" fn(
         this: &Self,
         completion_token: &UnmodelledPointer,
     ) -> Status,
 
-    poll: extern "efiapi" fn(this: &Self) -> Status,
+    poll_fn: extern "efiapi" fn(this: &Self) -> Status,
 }
 
+impl TCPv4Protocol {
+    pub fn reset_stack(&self) {
+        // The UEFI specification states that configuring with NULL options "brutally resets" the TCP stack
+        (self.configure_fn)(
+            self,
+            None,
+        ).to_result().expect("Failed to reset TCP stack")
+    }
+
+    pub fn configure(&self, bt: &BootServices, connection_mode: TCPv4ConnectionMode) -> uefi::Result<(), String> {
+        let configuration = TCPv4ConfigData::new(connection_mode, None);
+        // Maximum timeout of 10 seconds
+        for _ in 0..10 {
+            let result = (self.configure_fn)(
+                self,
+                Some(&configuration),
+            );
+            if result == Status::SUCCESS {
+                info!("Configured connection! {result:?}");
+                return Ok(())
+            }
+            else if result == Status::NO_MAPPING {
+                info!("DHCP still running, waiting...");
+                bt.stall(1_000_000);
+            }
+            else {
+                info!("Error {result:?}, will spin and try again");
+                bt.stall(1_000_000);
+            }
+        }
+        Err(Error::new(Status::PROTOCOL_ERROR, "Timeout before configuring the connection succeeded.".to_string()))
+    }
+
+    pub fn get_tcp_connection_state(&self) -> TCPv4ConnectionState {
+        let mut connection_state = core::mem::MaybeUninit::<TCPv4ConnectionState>::uninit();
+        let mut connection_state_ptr = connection_state.as_mut_ptr();
+        unsafe {
+            (self.get_mode_data_fn)(
+                self,
+                Some(&mut *connection_state_ptr),
+                None,
+                None,
+                None,
+                None,
+            ).to_result().expect("Failed to read connection state");
+            connection_state.assume_init()
+        }
+    }
+
+    pub fn get_ipv4_mode_data(&self) -> IPv4ModeData {
+        let mut mode_data = core::mem::MaybeUninit::<IPv4ModeData>::uninit();
+        let mut mode_data_ptr = mode_data.as_mut_ptr();
+        unsafe {
+            (self.get_mode_data_fn)(
+                self,
+                None,
+                None,
+                Some(&mut *mode_data_ptr),
+                None,
+                None,
+            ).to_result().expect("Failed to read mode data");
+            mode_data.assume_init()
+        }
+    }
+
+    pub fn connect(&self) {
+        let mut connection_operation_completed = false;
+        let handle_connection_operation_completed = |e: Event, _ctx: Option<NonNull<c_void>>| {
+            info!("handle_connection_operation_completed {e:?}");
+            connection_operation_completed = true;
+        };
+        /*
+        unsafe extern "efiapi" fn handle_connection_operation_completed(e: Event, _ctx: Option<NonNull<c_void>>) {
+            info!("handle_connection_operation_completed {e:?}");
+            connection_operation_completed = true;
+        }
+        */
+
+        let event = unsafe {
+            bt.create_event(
+                EventType::NOTIFY_SIGNAL,
+                Tpl::CALLBACK,
+                Some(handle_connection_operation_completed),
+                None,
+            ).unwrap()
+        };
+        let completion_token = TCPv4CompletionToken::new(event);
+        let result = (tcp.connect)(
+            &tcp,
+            &completion_token,
+        );
+        info!("Result of calling connect(): {result:?}");
+        bt.stall(1_000_000);
+    }
+}
 
 #[repr(C)]
 pub struct TCPv4IoToken<'a> {
@@ -306,7 +382,7 @@ pub struct TCPv4TransmitData {
 }
 
 impl TCPv4TransmitData {
-    pub(crate) fn new(data: &[u8]) -> Self {
+    pub(crate) fn new(data: &[u8]) -> Box<Self> {
         let fragment = TCPv4FragmentData::new(data);
         let fragment_ref = &fragment;
         let size_of_fragment = core::mem::size_of::<TCPv4FragmentData>();
@@ -317,7 +393,7 @@ impl TCPv4TransmitData {
             total_size,
             core::mem::align_of::<Self>(),
         ).unwrap();
-        let s = unsafe {
+        unsafe {
             let mut s = alloc::alloc::alloc(layout) as *mut Self;
             (*s).push = true;
             (*s).urgent = false;
@@ -328,38 +404,8 @@ impl TCPv4TransmitData {
                 (*s).fragment_table.as_mut_ptr(),
                 size_of_fragment,
             );
-            &mut *s
-
-            /*
-            let fragment_table_ptr = s.add(1) as *mut TCPv4FragmentData; // Offset by the size of the struct
-            core::ptr::write(fragment_table_ptr, fragment);
-            &mut *s
-             */
-        };
-        unsafe { core::ptr::read(s) }
-        //unsafe {Box::from_raw(s)}
-
-        /*
-        let fragment = TCPv4FragmentData::new(data);
-        let fragment_table_size = core::mem::size_of::<TCPv4FragmentData>();
-        let fragment_table_layout = Layout::from_size_align(
-            fragment_table_size,
-            core::mem::align_of::<TCPv4FragmentData>()
-        ).unwrap();
-        let fragment_table = unsafe {
-            let ptr = alloc::alloc::alloc(fragment_table_layout) as *mut TCPv4FragmentData;
-            ptr.copy_from_nonoverlapping((&fragment).as_ptr(), 1 as usize);
-            ptr as *const TCPv4FragmentData as &TCPv4FragmentData
-        };
-        Self {
-            push: false,
-            urgent: false,
-            data_length: data.len() as u32,
-            fragment_count: 1,
-            //fragment_table: Box::leak(Box::new([fragment])),
-            fragment_table: fragment_table,
+            Box::from_raw(&mut *s)
         }
-         */
     }
 }
 
