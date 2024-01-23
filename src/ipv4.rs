@@ -1,6 +1,3 @@
-use core::ffi::c_void;
-
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(C)]
 // PT: Cannot use the type from uefi-rs because it's always 16 bytes, which messes up alignment in TCPv4AccessPoint
@@ -13,10 +10,6 @@ impl IPv4Address {
 
     pub fn zero() -> Self {
         Self([0, 0, 0, 0])
-    }
-
-    pub fn subnet24() -> Self {
-        Self([255, 255, 255, 0])
     }
 }
 

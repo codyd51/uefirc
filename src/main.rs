@@ -1,6 +1,6 @@
 #![no_main]
 #![no_std]
-#![feature(core_intrinsics)]
+#[allow(dead_code)]
 
 mod tcpv4;
 mod ipv4;
@@ -8,22 +8,11 @@ mod ipv4;
 extern crate alloc;
 
 use alloc::rc::Rc;
-use alloc::vec;
-use alloc::vec::Vec;
 use core::cell::RefCell;
-use core::ffi::c_void;
-use core::mem;
-use core::ptr::{null, NonNull};
-use log::info;
 use uefi::prelude::*;
-use uefi::{Event, Guid, guid, Result};
-use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput};
-use uefi::proto::media::block::BlockIoProtocol;
-use uefi::proto::rng::Rng;
-use uefi::table::boot::{EventType, OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol, Tpl};
-use uefi::proto::unsafe_protocol;
-use crate::ipv4::{IPv4Address, IPv4ModeData};
-use crate::tcpv4::{TCPv4ClientConnectionModeParams, TCPv4CompletionToken, TCPv4ConfigData, TCPv4ConnectionLifecycleManager, TCPv4ConnectionMode, TCPv4ConnectionState, TCPv4IoToken, TCPv4Option, TCPv4Protocol, TCPv4ServiceBindingProtocol, TCPv4TransmitData};
+use uefi::table::boot::{OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol};
+use crate::ipv4::IPv4Address;
+use crate::tcpv4::{TCPv4ClientConnectionModeParams, TCPv4ConnectionLifecycleManager, TCPv4ConnectionMode, TCPv4Protocol, TCPv4ServiceBindingProtocol};
 
 fn get_tcp_service_binding_protocol(bs: &BootServices) -> ScopedProtocol<TCPv4ServiceBindingProtocol> {
     let tcp_service_binding_handle = bs.get_handle_for_protocol::<TCPv4ServiceBindingProtocol>().unwrap();
@@ -45,7 +34,7 @@ fn get_tcp_protocol<'a>(
     tcp_service_binding_proto: &'a ScopedProtocol<'a, TCPv4ServiceBindingProtocol>,
 ) -> ScopedProtocol<'a, TCPv4Protocol> {
     let mut tcp_handle = core::mem::MaybeUninit::<Handle>::uninit();
-    let mut tcp_handle_ptr = tcp_handle.as_mut_ptr();
+    let tcp_handle_ptr = tcp_handle.as_mut_ptr();
     let result = unsafe {
         (tcp_service_binding_proto.create_child)(
             &tcp_service_binding_proto,
@@ -87,14 +76,7 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
         )
     ).expect("Failed to configure the TCP connection");
 
-    /*
-    let mode_data = tcp.get_ipv4_mode_data();
-    info!("Got mode data: {mode_data:?}");
-    let connection_state = tcp.get_tcp_connection_state();
-    info!("Got connection state: {connection_state:?}");
-    */
-
-    let mut lifecycle = Rc::new(RefCell::new(TCPv4ConnectionLifecycleManager::new()));
+    let lifecycle = Rc::new(RefCell::new(TCPv4ConnectionLifecycleManager::new()));
     tcp.connect(&bs, &lifecycle);
 
     //let tx_data = TCPv4TransmitData::new(b"NICK phillip-testing\r\n");
@@ -109,14 +91,4 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     loop {
         bs.stall(1_000_000);
     }
-
-    Status::SUCCESS
-}
-
-unsafe extern "efiapi" fn handle_notify_signal(e: Event, _ctx: Option<NonNull<c_void>>) {
-    info!("handle_notify_signal {e:?}");
-}
-
-unsafe extern "efiapi" fn handle_connection_operation_completed(e: Event, _ctx: Option<NonNull<c_void>>) {
-    info!("handle_connection_operation_completed {e:?}");
 }

@@ -7,23 +7,18 @@
 use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::string::{String, ToString};
-use alloc::vec::Vec;
 use core::alloc::Layout;
 use core::cell::RefCell;
 use core::ffi::c_void;
-use core::intrinsics::size_of;
 use core::mem;
-use core::mem::{ManuallyDrop};
-use core::ptr::{copy_nonoverlapping, null};
+use core::mem::ManuallyDrop;
+use core::ptr::copy_nonoverlapping;
 use log::info;
 use uefi::{Error, Event, Handle, Status, StatusExt};
 use uefi::prelude::BootServices;
 use core::ptr::NonNull;
 
-use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput};
-use uefi::proto::media::block::BlockIoProtocol;
-use uefi::proto::rng::Rng;
-use uefi::table::boot::{EventType, OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol, Tpl};
+use uefi::table::boot::{EventType, Tpl};
 use uefi::proto::unsafe_protocol;
 use crate::ipv4::{IPv4Address, IPv4ModeData};
 
@@ -246,7 +241,7 @@ impl TCPv4Protocol {
 
     pub fn get_tcp_connection_state(&self) -> TCPv4ConnectionState {
         let mut connection_state = core::mem::MaybeUninit::<TCPv4ConnectionState>::uninit();
-        let mut connection_state_ptr = connection_state.as_mut_ptr();
+        let connection_state_ptr = connection_state.as_mut_ptr();
         unsafe {
             (self.get_mode_data_fn)(
                 self,
@@ -262,7 +257,7 @@ impl TCPv4Protocol {
 
     pub fn get_ipv4_mode_data(&self) -> IPv4ModeData {
         let mut mode_data = core::mem::MaybeUninit::<IPv4ModeData>::uninit();
-        let mut mode_data_ptr = mode_data.as_mut_ptr();
+        let mode_data_ptr = mode_data.as_mut_ptr();
         unsafe {
             (self.get_mode_data_fn)(
                 self,
@@ -276,15 +271,9 @@ impl TCPv4Protocol {
         }
     }
 
-    unsafe extern "efiapi" fn _handle_connect_completed(e: Event, context: Option<core::ptr::NonNull<c_void>>) {
-        let lifecycle: &mut TCPv4ConnectionLifecycleManager = cast_ctx(context);
-        lifecycle.is_waiting_for_connect_to_complete = false;
-        info!("Callback: Connection completed!");
-    }
-
-    pub fn connect(&mut self, bs: &BootServices, lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>) {
+    pub fn connect(&mut self, bs: &BootServices, _lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>) {
         unsafe {
-            let event = _create_event(bs, |event| {
+            let event = _create_event(bs, |_event| {
                 info!("Callback: connection completed!");
             });
             let completion_token = TCPv4CompletionToken::new(event.unsafe_clone());
@@ -299,22 +288,16 @@ impl TCPv4Protocol {
         }
     }
 
-    unsafe extern "efiapi" fn _handle_transmit_completed(e: Event, context: Option<core::ptr::NonNull<c_void>>) {
-        let lifecycle: &mut TCPv4ConnectionLifecycleManager = cast_ctx(context);
-        lifecycle.is_waiting_for_transmit_to_complete = false;
-        info!("Callback: Transmit completed!");
-    }
-
     pub fn transmit(
         &mut self,
         bs: &BootServices,
-        lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>,
+        _lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>,
         data: &[u8],
     ) {
         unsafe {
             let event = _create_event(
                 &bs,
-                |e|{
+                |_e|{
                     info!("Callback: transmit completed!")
                 }
             );
@@ -493,24 +476,18 @@ impl TCPv4TransmitData {
             mem::align_of::<Self>(),
         ).unwrap();
         unsafe {
-            let mut ptr = alloc::alloc::alloc(layout) as *mut Self;
-            //info!("ALLOCATED tx data at {ptr:?}");
+            let ptr = alloc::alloc::alloc(layout) as *mut Self;
             (*ptr).push = true;
             (*ptr).urgent = false;
             (*ptr).data_length = data.len() as _;
 
             let fragment_count = 1;
             (*ptr).fragment_count = fragment_count as _;
-            //info!("Copying {} bytes", mem::size_of::<ManuallyDrop<TCPv4FragmentData>>());
             copy_nonoverlapping(
                 &fragment as *const _,
                 (*ptr).fragment_table.as_mut_ptr(),
                 fragment_count,
             );
-            // Calculate the offset for the fragment data
-            //let fragments_ptr = ptr.add(1) as *mut ManuallyDrop<TCPv4FragmentData>;
-            // Copy the fragment data to the allocated space
-            //fragments_ptr.write(fragment);
             &*ptr
         }
     }
