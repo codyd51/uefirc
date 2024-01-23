@@ -4,8 +4,12 @@
 // TCP4: 65530BC7-A359-410F-B010-5AADC7EC2B62 BDB4CE38
 // HTTP: 7A59B29B-910B-4171-8242-A85A0DF25B5B BDB4C020
 
+use alloc::boxed::Box;
+use core::alloc::Layout;
 use core::ffi::c_void;
-use uefi::{Handle, Status};
+use core::intrinsics::size_of;
+use core::ptr::{copy_nonoverlapping, null};
+use uefi::{Event, Handle, Status};
 
 use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput};
 use uefi::proto::media::block::BlockIoProtocol;
@@ -49,7 +53,8 @@ impl TCPv4AccessPoint {
              */
             station_address: IPv4Address::zero(),
             subnet_mask: IPv4Address::zero(),
-            station_port: 1234,
+            //station_port: 1234,
+            station_port: 0,
             //remote_address: IPv4Address::zero(),
             //remote_address: IPv4Address::new(1, 0, 169, 192),
             //remote_address: IPv4Address::new(192, 169, 0, 1),
@@ -165,7 +170,7 @@ pub struct TCPv4ServiceBindingProtocol {
 pub struct TCPv4Protocol {
     pub(crate) get_mode_data: extern "efiapi" fn(
         this: &Self,
-        out_connection_state: Option<&mut UnmodelledPointer>,
+        out_connection_state: Option<&mut TCPv4ConnectionState>,
         out_config_data: Option<&mut UnmodelledPointer>,
         out_ip4_mode_data: Option<&mut IPv4ModeData>,
         out_managed_network_config_data: Option<&mut UnmodelledPointer>,
@@ -185,9 +190,9 @@ pub struct TCPv4Protocol {
         gateway_address: &IPv4Address,
     ) -> Status,
 
-    connect: extern "efiapi" fn(
+    pub(crate) connect: extern "efiapi" fn(
         this: &Self,
-        connection_token: &UnmodelledPointer,
+        connection_token: &TCPv4CompletionToken,
     ) -> Status,
 
     accept: extern "efiapi" fn(
@@ -195,9 +200,9 @@ pub struct TCPv4Protocol {
         listen_token: &UnmodelledPointer,
     ) -> Status,
 
-    transmit: extern "efiapi" fn(
+    pub(crate) transmit: extern "efiapi" fn(
         this: &Self,
-        token: &UnmodelledPointer,
+        token: &TCPv4IoToken,
     ) -> Status,
 
     receive: extern "efiapi" fn(
@@ -216,4 +221,150 @@ pub struct TCPv4Protocol {
     ) -> Status,
 
     poll: extern "efiapi" fn(this: &Self) -> Status,
+}
+
+
+#[repr(C)]
+pub struct TCPv4IoToken<'a> {
+    pub completion_token: TCPv4CompletionToken,
+    packet: TCPv4Packet<'a>,
+}
+
+impl<'a> TCPv4IoToken<'a> {
+    pub fn new(event: Event, tx: &'a TCPv4TransmitData) -> Self {
+        Self {
+            completion_token: TCPv4CompletionToken::new(event),
+            packet: TCPv4Packet { tx_data: tx },
+        }
+    }
+}
+
+#[repr(C)]
+union TCPv4Packet<'a> {
+    rx_data: &'a TCPv4ReceiveData<'a>,
+    tx_data: &'a TCPv4TransmitData,
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct TCPv4CompletionToken {
+    pub event: Event,
+    status: Status,
+}
+
+impl TCPv4CompletionToken {
+    pub fn new(event: Event) -> Self {
+        // PT: Replace in IO with MaybeUninit?
+        Self {
+            event,
+            status: Status::SUCCESS,
+        }
+    }
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct TCPv4FragmentData {
+    fragment_length: u32,
+    fragment_buf: *const c_void,
+}
+
+impl TCPv4FragmentData {
+    fn new(data: &[u8]) -> Self {
+        let layout = Layout::from_size_align(data.len(), core::mem::align_of::<u8>()).unwrap();
+        let buffer = unsafe { alloc::alloc::alloc(layout) } as *mut u8;
+
+        unsafe {
+            copy_nonoverlapping(data.as_ptr(), buffer, data.len());
+        }
+
+        Self {
+            fragment_length: data.len() as u32,
+            fragment_buf: buffer as *const c_void,
+        }
+    }
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct TCPv4ReceiveData<'a> {
+    urgent_flag: bool,
+    data_length: u32,
+    fragment_count: u32,
+    fragment_table: &'a [TCPv4FragmentData],
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct TCPv4TransmitData {
+    push: bool,
+    urgent: bool,
+    data_length: u32,
+    fragment_count: u32,
+    fragment_table: [TCPv4FragmentData; 1],
+}
+
+impl TCPv4TransmitData {
+    pub(crate) fn new(data: &[u8]) -> Self {
+        let fragment = TCPv4FragmentData::new(data);
+        let fragment_ref = &fragment;
+        let size_of_fragment = core::mem::size_of::<TCPv4FragmentData>();
+        let total_size = core::mem::size_of::<Self>() + size_of_fragment;
+        let layout = Layout::from_size_align(
+            total_size,
+            core::mem::align_of::<usize>(),
+        ).unwrap();
+        let s = unsafe {
+            let mut s = alloc::alloc::alloc(layout) as *mut Self;
+            (*s).push = true;
+            (*s).urgent = false;
+            (*s).data_length = data.len() as _;
+            (*s).fragment_count = 1;
+            copy_nonoverlapping(
+                fragment_ref as *const _,
+                (*s).fragment_table.as_mut_ptr(),
+                size_of_fragment,
+            );
+            &mut *s
+        };
+        unsafe { core::ptr::read(s) }
+
+        /*
+        let fragment = TCPv4FragmentData::new(data);
+        let fragment_table_size = core::mem::size_of::<TCPv4FragmentData>();
+        let fragment_table_layout = Layout::from_size_align(
+            fragment_table_size,
+            core::mem::align_of::<TCPv4FragmentData>()
+        ).unwrap();
+        let fragment_table = unsafe {
+            let ptr = alloc::alloc::alloc(fragment_table_layout) as *mut TCPv4FragmentData;
+            ptr.copy_from_nonoverlapping((&fragment).as_ptr(), 1 as usize);
+            ptr as *const TCPv4FragmentData as &TCPv4FragmentData
+        };
+        Self {
+            push: false,
+            urgent: false,
+            data_length: data.len() as u32,
+            fragment_count: 1,
+            //fragment_table: Box::leak(Box::new([fragment])),
+            fragment_table: fragment_table,
+        }
+         */
+    }
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub enum TCPv4ConnectionState {
+    Closed = 0,
+    Listen = 1,
+    SynSent = 2,
+    SynReceived = 3,
+    Established = 4,
+    FinWait1 = 5,
+    FinWait2 = 6,
+    Closing = 7,
+    TimeWait = 8,
+    CloseWait = 9,
+    LastAck = 10,
 }
