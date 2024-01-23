@@ -6,13 +6,17 @@
 
 use alloc::boxed::Box;
 use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use core::alloc::Layout;
 use core::ffi::c_void;
 use core::intrinsics::size_of;
+use core::mem;
+use core::mem::{ManuallyDrop};
 use core::ptr::{copy_nonoverlapping, null};
 use log::info;
 use uefi::{Error, Event, Handle, Status, StatusExt};
 use uefi::prelude::BootServices;
+use core::ptr::NonNull;
 
 use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput};
 use uefi::proto::media::block::BlockIoProtocol;
@@ -271,42 +275,111 @@ impl TCPv4Protocol {
     }
 
     unsafe extern "efiapi" fn _handle_connect_completed(e: Event, context: Option<core::ptr::NonNull<c_void>>) {
-        let lifecycle_ptr = context.unwrap().as_ptr() as *mut c_void as *mut TCPv4ConnectionLifecycleManager;
-        let lifecycle = &mut *lifecycle_ptr;
+        let lifecycle: &mut TCPv4ConnectionLifecycleManager = cast_ctx(context);
         lifecycle.is_waiting_for_connect_to_complete = false;
-        info!("Connection completed! {e:?}, {lifecycle:?}");
+        info!("Callback: Connection completed!");
     }
 
     pub fn connect(&mut self, bs: &BootServices, lifecycle: &mut TCPv4ConnectionLifecycleManager) {
         unsafe {
+            /*
             let event = bs.create_event(
                 EventType::NOTIFY_WAIT,
                 Tpl::CALLBACK,
                 Some(Self::_handle_connect_completed),
                 Some(core::ptr::NonNull::new(lifecycle as *mut _ as *mut c_void).unwrap()),
             ).unwrap();
+            */
+            let event = _create_event(
+                bs,
+                Some(Self::_handle_connect_completed),
+                Some(lifecycle),
+            );
             let completion_token = TCPv4CompletionToken::new(event.unsafe_clone());
             lifecycle.is_waiting_for_connect_to_complete = true;
-            let result = (self.connect_fn)(
+            (self.connect_fn)(
                 &self,
                 &completion_token,
             ).to_result().expect("Failed to call Connect()");
             bs.wait_for_event(&mut [event.unsafe_clone()]).expect("Failed to wait for connection to complete");
-            info!("Finished waiting for event!");
+            //info!("Finished waiting for event!");
+            bs.close_event(event).expect("Failed to close event");
+        }
+    }
+
+    unsafe extern "efiapi" fn _handle_transmit_completed(e: Event, context: Option<core::ptr::NonNull<c_void>>) {
+        let lifecycle: &mut TCPv4ConnectionLifecycleManager = cast_ctx(context);
+        lifecycle.is_waiting_for_transmit_to_complete = false;
+        info!("Callback: Transmit completed!");
+    }
+
+    pub fn transmit(
+        &mut self,
+        bs: &BootServices,
+        lifecycle: &mut TCPv4ConnectionLifecycleManager,
+        data: &[u8],
+    ) {
+        unsafe {
+            let event = _create_event(
+                bs,
+                Some(Self::_handle_transmit_completed),
+                Some(lifecycle),
+            );
+            lifecycle.is_waiting_for_transmit_to_complete = true;
+            let tx_data = TCPv4TransmitData::new(data);
+            let io_token = TCPv4IoToken::new(event.unsafe_clone(), tx_data);
+            let result = (self.transmit_fn)(
+                &self,
+                &io_token,
+            );
+            info!("Transmit return value: {result:?}");
+
+            bs.wait_for_event(&mut [event.unsafe_clone()]).expect("Failed to wait for transmit to complete");
             bs.close_event(event).expect("Failed to close event");
         }
     }
 }
 
+// PT: Copied from non-public interface in uefi-rs
+type EventNotifyFn = unsafe extern "efiapi" fn(event: Event, context: Option<NonNull<c_void>>);
+
+fn _create_event<T>(
+    bs: &BootServices,
+    callback: Option<EventNotifyFn>,
+    notify_ctx: Option<&mut T>,
+) -> Event {
+    let raw_notify_ctx = match notify_ctx {
+        Some(ctx) => {
+            Some(core::ptr::NonNull::new(ctx as *mut _ as *mut c_void).unwrap())
+        }
+        None => None,
+    };
+    unsafe {
+        bs.create_event(
+            EventType::NOTIFY_WAIT,
+            Tpl::CALLBACK,
+            callback,
+            raw_notify_ctx,
+        ).expect("Failed to create event")
+    }
+}
+
+unsafe fn cast_ctx<T>(raw_val: Option<core::ptr::NonNull<c_void>>) -> &'static mut T {
+    let val_ptr = raw_val.unwrap().as_ptr() as *mut c_void as *mut T;
+    &mut *val_ptr
+}
+
 #[derive(Debug)]
 pub struct TCPv4ConnectionLifecycleManager {
     is_waiting_for_connect_to_complete: bool,
+    is_waiting_for_transmit_to_complete: bool,
 }
 
 impl TCPv4ConnectionLifecycleManager {
     pub fn new() -> Self {
         Self {
             is_waiting_for_connect_to_complete: false,
+            is_waiting_for_transmit_to_complete: false,
         }
     }
 }
@@ -358,16 +431,32 @@ pub struct TCPv4FragmentData {
 
 impl TCPv4FragmentData {
     fn new(data: &[u8]) -> Self {
-        let layout = Layout::from_size_align(data.len(), core::mem::align_of::<u8>()).unwrap();
-        let buffer = unsafe { alloc::alloc::alloc(layout) } as *mut u8;
-
         unsafe {
-            copy_nonoverlapping(data.as_ptr(), buffer, data.len());
+            let data_len = data.len();
+            let layout = Layout::array::<u8>(data_len).unwrap();
+            let buffer = alloc::alloc::alloc(layout);
+            //info!("Allocated fragment {buffer:?} of size {data_len:?}");
+            copy_nonoverlapping(
+                data.as_ptr(),
+                buffer,
+                data_len,
+            );
+            Self {
+                fragment_length: data_len as u32,
+                fragment_buf: buffer as *const c_void,
+            }
         }
+    }
+}
 
-        Self {
-            fragment_length: data.len() as u32,
-            fragment_buf: buffer as *const c_void,
+impl Drop for TCPv4FragmentData {
+    fn drop(&mut self) {
+        unsafe {
+            let f = self.fragment_buf;
+            let l = self.fragment_length;
+            info!("Drop TCPv4FragmentData {self:?} {f:?} {l:?}");
+            let layout = Layout::array::<u8>(self.fragment_length as usize).unwrap();
+            alloc::alloc::dealloc(self.fragment_buf as *mut u8, layout);
         }
     }
 }
@@ -388,33 +477,69 @@ pub struct TCPv4TransmitData {
     urgent: bool,
     data_length: u32,
     fragment_count: u32,
-    fragment_table: [TCPv4FragmentData; 0],
+    fragment_table: [ManuallyDrop<TCPv4FragmentData>; 0],
 }
 
 impl TCPv4TransmitData {
-    pub(crate) fn new(data: &[u8]) -> Box<Self> {
-        let fragment = TCPv4FragmentData::new(data);
-        let fragment_ref = &fragment;
-        let size_of_fragment = core::mem::size_of::<TCPv4FragmentData>();
-        info!("size of fragment {size_of_fragment}");
-        let total_size = core::mem::size_of::<Self>() + size_of_fragment;
-        info!("total_size {total_size}");
+    fn total_layout_size(fragment_count: usize) -> usize {
+        let size_of_fragments = mem::size_of::<TCPv4FragmentData>() * fragment_count;
+        mem::size_of::<Self>() + size_of_fragments
+    }
+
+    pub(crate) fn new(data: &[u8]) -> &Self {
+        let fragment = ManuallyDrop::new(TCPv4FragmentData::new(data));
         let layout = Layout::from_size_align(
-            total_size,
-            core::mem::align_of::<Self>(),
+            Self::total_layout_size(1),
+            mem::align_of::<Self>(),
         ).unwrap();
         unsafe {
-            let mut s = alloc::alloc::alloc(layout) as *mut Self;
-            (*s).push = true;
-            (*s).urgent = false;
-            (*s).data_length = data.len() as _;
-            (*s).fragment_count = 1;
+            let mut ptr = alloc::alloc::alloc(layout) as *mut Self;
+            //info!("ALLOCATED tx data at {ptr:?}");
+            (*ptr).push = true;
+            (*ptr).urgent = false;
+            (*ptr).data_length = data.len() as _;
+
+            let fragment_count = 1;
+            (*ptr).fragment_count = fragment_count as _;
+            //info!("Copying {} bytes", mem::size_of::<ManuallyDrop<TCPv4FragmentData>>());
             copy_nonoverlapping(
-                fragment_ref as *const _,
-                (*s).fragment_table.as_mut_ptr(),
-                size_of_fragment,
+                &fragment as *const _,
+                (*ptr).fragment_table.as_mut_ptr(),
+                fragment_count,
             );
-            Box::from_raw(&mut *s)
+            // Calculate the offset for the fragment data
+            //let fragments_ptr = ptr.add(1) as *mut ManuallyDrop<TCPv4FragmentData>;
+            // Copy the fragment data to the allocated space
+            //fragments_ptr.write(fragment);
+            &*ptr
+        }
+    }
+}
+
+impl Drop for TCPv4TransmitData {
+    fn drop(&mut self) {
+        info!("Dropping TCPv4TransmitData {self:?}");
+
+        let ptr = self as *mut Self;
+        unsafe {
+            // First, drop all the fragments
+            let fragment_table: *mut ManuallyDrop<TCPv4FragmentData> = (*ptr).fragment_table.as_mut_ptr();
+            for i in 0..self.fragment_count {
+                let fragment_ptr = fragment_table.add(i as _);
+                let fragment = &mut *fragment_ptr;
+                info!("Freeing fragment #{i}: {fragment:?}");
+                let b = fragment.fragment_buf;
+                let l = fragment.fragment_length;
+                info!("Fragment has buf fragment {b:?} of size {l:?}");
+                ManuallyDrop::drop(fragment);
+            }
+
+            // Finally, drop this allocation
+            let layout = Layout::from_size_align(
+                Self::total_layout_size(self.fragment_count as _),
+                mem::align_of::<Self>(),
+            ).unwrap();
+            alloc::alloc::dealloc(ptr as *mut u8, layout);
         }
     }
 }

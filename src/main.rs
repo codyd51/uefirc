@@ -95,33 +95,16 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     let mut lifecycle = TCPv4ConnectionLifecycleManager::new();
     tcp.connect(&bs, &mut lifecycle);
 
-    /*
-    for i in 0..10 {
-        info!("Running another iteration {i}");
-        let tx_data = TCPv4TransmitData::new(b"NICK phillip-testing\r\n");
-        let event = unsafe {
-            bs.create_event(
-                EventType::NOTIFY_SIGNAL,
-                Tpl::CALLBACK,
-                Some(handle_notify_signal),
-                None,
-            ).unwrap()
-        };
-        info!("Got event {event:?}");
-        let io = TCPv4IoToken::new(event, &tx_data);
-        info!("TX Data {tx_data:?}");
-        let result = (tcp.transmit_fn)(
-            &tcp,
-            &io,
-        );
-        info!("Output: {result:?}");
-        bs.stall(2_000_000);
+    //let tx_data = TCPv4TransmitData::new(b"NICK phillip-testing\r\n");
+    //info!("Tx data {tx_data:?}");
+    for _ in 0..1 {
+        //info!("Start iteration {i}");
+        tcp.transmit(&bs, &mut lifecycle, b"NICK phillip-testing\r\n");
+        //tcp.transmit(&bs, &mut lifecycle, b"");
+        //info!("Finished iteration {i}");
     }
 
-     */
-
     loop {
-        //info!("Spinning...");
         bs.stall(1_000_000);
     }
 

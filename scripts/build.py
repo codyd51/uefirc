@@ -13,12 +13,19 @@ _ARCH_TARGET_NAME = "x86_64-unknown-uefi"
 def run():
     run_and_check(
         [
-            "qemu-system-x86_64",
+            "sudo",
+            "/opt/homebrew/bin/qemu-system-x86_64",
             # OVMF: Open source UEFI firmware for QEMU
             "-bios",
-            "/usr/share/ovmf/OVMF.fd",
-            # Enable hardware acceleration on Linux
-            "-enable-kvm",
+            (_REPO_ROOT / "ubuntu_OVMF.fd").as_posix(),
+            "-monitor", "stdio",
+            "-m", "4G",
+            "-vga", "virtio",
+            "-netdev", "vmnet-shared,id=vmnet",
+            "-device", "rtl8139,netdev=vmnet",
+            #"-drive", "format=raw,file=fat:rw:esp",
+            "-debugcon", "file:debug.log",
+            "-global", "isa-debugcon.iobase=0x402",
             # Provide a VirtIO RNG peripheral
             "-device",
             "virtio-rng-pci",
