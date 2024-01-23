@@ -21,15 +21,15 @@ use uefi::proto::rng::Rng;
 use uefi::table::boot::{EventType, OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol, Tpl};
 use uefi::proto::unsafe_protocol;
 use crate::ipv4::{IPv4Address, IPv4ModeData};
-use crate::tcpv4::{TCPv4ClientConnectionModeParams, TCPv4CompletionToken, TCPv4ConfigData, TCPv4ConnectionMode, TCPv4ConnectionState, TCPv4IoToken, TCPv4Option, TCPv4Protocol, TCPv4ServiceBindingProtocol, TCPv4TransmitData};
+use crate::tcpv4::{TCPv4ClientConnectionModeParams, TCPv4CompletionToken, TCPv4ConfigData, TCPv4ConnectionLifecycleManager, TCPv4ConnectionMode, TCPv4ConnectionState, TCPv4IoToken, TCPv4Option, TCPv4Protocol, TCPv4ServiceBindingProtocol, TCPv4TransmitData};
 
-fn get_tcp_service_binding_protocol(bt: &BootServices) -> ScopedProtocol<TCPv4ServiceBindingProtocol> {
-    let tcp_service_binding_handle = bt.get_handle_for_protocol::<TCPv4ServiceBindingProtocol>().unwrap();
+fn get_tcp_service_binding_protocol(bs: &BootServices) -> ScopedProtocol<TCPv4ServiceBindingProtocol> {
+    let tcp_service_binding_handle = bs.get_handle_for_protocol::<TCPv4ServiceBindingProtocol>().unwrap();
     let tcp_service_binding = unsafe {
-        bt.open_protocol::<TCPv4ServiceBindingProtocol>(
+        bs.open_protocol::<TCPv4ServiceBindingProtocol>(
             OpenProtocolParams {
                 handle: tcp_service_binding_handle,
-                agent: bt.image_handle(),
+                agent: bs.image_handle(),
                 controller: None,
             },
             OpenProtocolAttributes::GetProtocol,
@@ -39,7 +39,7 @@ fn get_tcp_service_binding_protocol(bt: &BootServices) -> ScopedProtocol<TCPv4Se
 }
 
 fn get_tcp_protocol<'a>(
-    bt: &'a BootServices,
+    bs: &'a BootServices,
     tcp_service_binding_proto: &'a ScopedProtocol<'a, TCPv4ServiceBindingProtocol>,
 ) -> ScopedProtocol<'a, TCPv4Protocol> {
     let mut tcp_handle = core::mem::MaybeUninit::<Handle>::uninit();
@@ -54,10 +54,10 @@ fn get_tcp_protocol<'a>(
     let tcp_handle = unsafe { tcp_handle.assume_init() };
 
     let tcp_proto = unsafe {
-        bt.open_protocol::<TCPv4Protocol>(
+        bs.open_protocol::<TCPv4Protocol>(
             OpenProtocolParams {
                 handle: tcp_handle,
-                agent: bt.image_handle(),
+                agent: bs.image_handle(),
                 controller: None,
             },
             OpenProtocolAttributes::GetProtocol,
@@ -69,14 +69,14 @@ fn get_tcp_protocol<'a>(
 #[entry]
 fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     uefi_services::init(&mut system_table).unwrap();
-    let bt = system_table.boot_services();
+    let bs = system_table.boot_services();
 
-    let tcp_service_binding = get_tcp_service_binding_protocol(bt);
-    let tcp = get_tcp_protocol(bt, &tcp_service_binding);
+    let tcp_service_binding = get_tcp_service_binding_protocol(bs);
+    let mut tcp = get_tcp_protocol(bs, &tcp_service_binding);
 
-    tcp.reset_stack();
+    //tcp.reset_stack();
     tcp.configure(
-        bt,
+        bs,
         TCPv4ConnectionMode::Client(
             TCPv4ClientConnectionModeParams::new(
                 IPv4Address::new(93, 158, 237, 2),
@@ -85,17 +85,22 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
         )
     ).expect("Failed to configure the TCP connection");
 
+    /*
     let mode_data = tcp.get_ipv4_mode_data();
     info!("Got mode data: {mode_data:?}");
     let connection_state = tcp.get_tcp_connection_state();
     info!("Got connection state: {connection_state:?}");
+    */
 
+    let mut lifecycle = TCPv4ConnectionLifecycleManager::new();
+    tcp.connect(&bs, &mut lifecycle);
 
+    /*
     for i in 0..10 {
         info!("Running another iteration {i}");
         let tx_data = TCPv4TransmitData::new(b"NICK phillip-testing\r\n");
         let event = unsafe {
-            bt.create_event(
+            bs.create_event(
                 EventType::NOTIFY_SIGNAL,
                 Tpl::CALLBACK,
                 Some(handle_notify_signal),
@@ -105,17 +110,19 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
         info!("Got event {event:?}");
         let io = TCPv4IoToken::new(event, &tx_data);
         info!("TX Data {tx_data:?}");
-        let result = (tcp.transmit)(
+        let result = (tcp.transmit_fn)(
             &tcp,
             &io,
         );
         info!("Output: {result:?}");
-        bt.stall(2_000_000);
+        bs.stall(2_000_000);
     }
+
+     */
 
     loop {
         //info!("Spinning...");
-        bt.stall(1_000_000);
+        bs.stall(1_000_000);
     }
 
     Status::SUCCESS

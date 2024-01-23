@@ -182,7 +182,7 @@ pub struct TCPv4Protocol {
         listen_token: &UnmodelledPointer,
     ) -> Status,
 
-    transmit_fn: extern "efiapi" fn(
+    pub(crate) transmit_fn: extern "efiapi" fn(
         this: &Self,
         token: &TCPv4IoToken,
     ) -> Status,
@@ -270,34 +270,44 @@ impl TCPv4Protocol {
         }
     }
 
-    pub fn connect(&self) {
-        let mut connection_operation_completed = false;
-        let handle_connection_operation_completed = |e: Event, _ctx: Option<NonNull<c_void>>| {
-            info!("handle_connection_operation_completed {e:?}");
-            connection_operation_completed = true;
-        };
-        /*
-        unsafe extern "efiapi" fn handle_connection_operation_completed(e: Event, _ctx: Option<NonNull<c_void>>) {
-            info!("handle_connection_operation_completed {e:?}");
-            connection_operation_completed = true;
-        }
-        */
+    unsafe extern "efiapi" fn _handle_connect_completed(e: Event, context: Option<core::ptr::NonNull<c_void>>) {
+        let lifecycle_ptr = context.unwrap().as_ptr() as *mut c_void as *mut TCPv4ConnectionLifecycleManager;
+        let lifecycle = &mut *lifecycle_ptr;
+        lifecycle.is_waiting_for_connect_to_complete = false;
+        info!("Connection completed! {e:?}, {lifecycle:?}");
+    }
 
-        let event = unsafe {
-            bt.create_event(
-                EventType::NOTIFY_SIGNAL,
+    pub fn connect(&mut self, bs: &BootServices, lifecycle: &mut TCPv4ConnectionLifecycleManager) {
+        unsafe {
+            let event = bs.create_event(
+                EventType::NOTIFY_WAIT,
                 Tpl::CALLBACK,
-                Some(handle_connection_operation_completed),
-                None,
-            ).unwrap()
-        };
-        let completion_token = TCPv4CompletionToken::new(event);
-        let result = (tcp.connect)(
-            &tcp,
-            &completion_token,
-        );
-        info!("Result of calling connect(): {result:?}");
-        bt.stall(1_000_000);
+                Some(Self::_handle_connect_completed),
+                Some(core::ptr::NonNull::new(lifecycle as *mut _ as *mut c_void).unwrap()),
+            ).unwrap();
+            let completion_token = TCPv4CompletionToken::new(event.unsafe_clone());
+            lifecycle.is_waiting_for_connect_to_complete = true;
+            let result = (self.connect_fn)(
+                &self,
+                &completion_token,
+            ).to_result().expect("Failed to call Connect()");
+            bs.wait_for_event(&mut [event.unsafe_clone()]).expect("Failed to wait for connection to complete");
+            info!("Finished waiting for event!");
+            bs.close_event(event).expect("Failed to close event");
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct TCPv4ConnectionLifecycleManager {
+    is_waiting_for_connect_to_complete: bool,
+}
+
+impl TCPv4ConnectionLifecycleManager {
+    pub fn new() -> Self {
+        Self {
+            is_waiting_for_connect_to_complete: false,
+        }
     }
 }
 
