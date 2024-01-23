@@ -284,45 +284,9 @@ impl TCPv4Protocol {
 
     pub fn connect(&mut self, bs: &BootServices, lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>) {
         unsafe {
-            /*
-            let event = bs.create_event(
-                EventType::NOTIFY_WAIT,
-                Tpl::CALLBACK,
-                Some(Self::_handle_connect_completed),
-                Some(core::ptr::NonNull::new(lifecycle as *mut _ as *mut c_void).unwrap()),
-            ).unwrap();
-            */
-            /*
-            let event = _create_event(
-                bs,
-                Some(Self::_handle_connect_completed),
-                Some(lifecycle),
-            );
-            */
-            /*
-            let event = _create_event2(bs, |lifecycle: Rc<RefCell<TCPv4ConnectionLifecycleManager>>| {
-                let lifecycle = lifecycle.borrow_mut();
-                lifecycle.is_waiting_for_connect_to_complete = false;
+            let event = _create_event(bs, |event| {
                 info!("Callback: connection completed!");
             });
-            */
-            let event = _create_event2(bs, |event| {
-                info!("Callback: connection completed! (CLOSURE {event:?})");
-            });
-            /*
-            let data = Box::into_raw(Box::new(callback));
-            let notify_ctx = core::ptr::NonNull(ctx as *mut _ as *mut c_void).unwrap());
-
-            unsafe {
-                bs.create_event(
-                    EventType::NOTIFY_WAIT,
-                    Tpl::CALLBACK,
-                    callback,
-                    raw_notify_ctx,
-                ).expect("Failed to create event")
-            }
-             */
-
             let completion_token = TCPv4CompletionToken::new(event.unsafe_clone());
             //lifecycle.is_waiting_for_connect_to_complete = true;
             (self.connect_fn)(
@@ -348,11 +312,11 @@ impl TCPv4Protocol {
         data: &[u8],
     ) {
         unsafe {
-            let event = _create_event::<()>(
-                bs,
-                Some(Self::_handle_transmit_completed),
-                //Some(Rc::clone(&lifecycle)),
-                None,
+            let event = _create_event(
+                &bs,
+                |e|{
+                    info!("Callback: transmit completed!")
+                }
             );
             //lifecycle.is_waiting_for_transmit_to_complete = true;
             let tx_data = TCPv4TransmitData::new(data);
@@ -369,31 +333,7 @@ impl TCPv4Protocol {
     }
 }
 
-// PT: Copied from non-public interface in uefi-rs
-type EventNotifyFn = unsafe extern "efiapi" fn(event: Event, context: Option<NonNull<c_void>>);
-
-fn _create_event<T>(
-    bs: &BootServices,
-    callback: Option<EventNotifyFn>,
-    notify_ctx: Option<&mut T>,
-) -> Event {
-    let raw_notify_ctx = match notify_ctx {
-        Some(ctx) => {
-            Some(core::ptr::NonNull::new(ctx as *mut _ as *mut c_void).unwrap())
-        }
-        None => None,
-    };
-    unsafe {
-        bs.create_event(
-            EventType::NOTIFY_WAIT,
-            Tpl::CALLBACK,
-            callback,
-            raw_notify_ctx,
-        ).expect("Failed to create event")
-    }
-}
-
-fn _create_event2<F>(
+fn _create_event<F>(
     bs: &BootServices,
     callback: F,
 ) -> Event
@@ -404,7 +344,7 @@ where
         bs.create_event(
             EventType::NOTIFY_WAIT,
             Tpl::CALLBACK,
-            Some(_call_closure::<F> as EventNotifyFn),
+            Some(_call_closure::<F>),
             Some(NonNull::new(data as *mut _ as *mut c_void).unwrap()),
         ).expect("Failed to create event")
     }
@@ -420,6 +360,8 @@ unsafe extern "efiapi" fn _call_closure<F>(
     let callback_ptr = unwrapped_context as *mut F;
     let callback = &mut *callback_ptr;
     callback(event);
+    // Drop the box carrying the closure
+    let _ = Box::from_raw(unwrapped_context as *mut _);
 }
 
 unsafe fn cast_ctx<T>(raw_val: Option<core::ptr::NonNull<c_void>>) -> &'static mut T {
