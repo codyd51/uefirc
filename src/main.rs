@@ -2,6 +2,7 @@
 #![no_std]
 
 mod tcpv4;
+mod ipv4;
 
 extern crate alloc;
 
@@ -18,6 +19,7 @@ use uefi::proto::media::block::BlockIoProtocol;
 use uefi::proto::rng::Rng;
 use uefi::table::boot::{OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol};
 use uefi::proto::unsafe_protocol;
+use crate::ipv4::IPv4ModeData;
 use crate::tcpv4::{TCPv4ConfigData, TCPv4Option, TCPv4Protocol, TCPv4ServiceBindingProtocol};
 
 fn get_tcp_service_binding_protocol(bt: &BootServices) -> ScopedProtocol<TCPv4ServiceBindingProtocol> {
@@ -69,9 +71,9 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     let bt = system_table.boot_services();
 
     let tcp_service_binding = get_tcp_service_binding_protocol(bt);
-    info!("Got TCP service binding protocol {tcp_service_binding:?}");
+    //info!("Got TCP service binding protocol {tcp_service_binding:?}");
     let tcp = get_tcp_protocol(bt, &tcp_service_binding);
-    info!("Got TCP protocol {tcp:?}");
+    //info!("Got TCP protocol {tcp:?}");
 
     // 'Brutally reset' the TCP stack
     let result = (tcp.configure)(
@@ -80,16 +82,48 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     );
     info!("Result of brutal reset {result:?}");
 
-    let options = TCPv4Option::new();
     let configuration = TCPv4ConfigData::new(None);
-    info!("Options {options:?}");
     info!("Configuration {configuration:?}");
-    let result = (tcp.configure)(
-        &tcp,
-        Some(&configuration),
-    );
-    info!("Configured connection! {result:?}");
 
-    bt.stall(1_000_000);
+    loop {
+        let result = (tcp.configure)(
+            &tcp,
+            Some(&configuration),
+        );
+        if result == Status::SUCCESS {
+            info!("Configured connection! {result:?}");
+            break;
+        }
+        else if result == Status::NO_MAPPING {
+            info!("DHCP still running, waiting...");
+            bt.stall(1_000_000);
+        }
+        else {
+            info!("Error {result:?}, will spin and try again");
+            bt.stall(1_000_000);
+            //result.to_result().expect("Failed to configure TCP connection");
+        }
+    }
+
+    let mut mode_data = core::mem::MaybeUninit::<IPv4ModeData>::uninit();
+    let mut mode_data_ptr = mode_data.as_mut_ptr();
+    unsafe {
+        (tcp.get_mode_data)(
+            &tcp,
+            None,
+            None,
+            Some(&mut *mode_data_ptr),
+            None,
+            None,
+        ).to_result().expect("Failed to read mode data");
+    }
+    let mode_data = unsafe { mode_data.assume_init() };
+    info!("Got mode data: {mode_data:?}");
+
+    loop {
+        //info!("Spinning...");
+        bt.stall(1_000_000);
+    }
+
     Status::SUCCESS
 }

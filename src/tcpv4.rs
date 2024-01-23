@@ -12,30 +12,11 @@ use uefi::proto::media::block::BlockIoProtocol;
 use uefi::proto::rng::Rng;
 use uefi::table::boot::{OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol};
 use uefi::proto::unsafe_protocol;
+use crate::ipv4::{IPv4Address, IPv4ModeData};
 
 #[derive(Debug)]
 #[repr(C)]
 pub struct UnmodelledPointer(pub *mut c_void);
-
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(C)]
-// PT: Cannot use the type from uefi-rs because it's always 16 bytes, which messes up alignment in TCPv4AccessPoint
-pub struct IPv4Address(pub [u8; 4]);
-
-impl IPv4Address {
-    fn new(b1: u8, b2: u8, b3: u8, b4: u8) -> Self {
-        Self([b1, b2, b3, b4])
-    }
-
-    fn zero() -> Self {
-        Self([0, 0, 0, 0])
-    }
-
-    fn subnet24() -> Self {
-        Self([255, 255, 255, 0])
-    }
-}
 
 #[derive(Debug)]
 #[repr(C)]
@@ -69,11 +50,13 @@ impl TCPv4AccessPoint {
             station_address: IPv4Address::zero(),
             subnet_mask: IPv4Address::zero(),
             station_port: 1234,
-            remote_address: IPv4Address::zero(),
-            //remote_address: IPv4Address::new(192, 169, 0, 1),
+            //remote_address: IPv4Address::zero(),
             //remote_address: IPv4Address::new(1, 0, 169, 192),
-            remote_port: 0,
-            active_flag: false,
+            //remote_address: IPv4Address::new(192, 169, 0, 1),
+            //remote_port: 80,
+            remote_address: IPv4Address::new(93, 158, 237, 2),
+            remote_port: 6665,
+            active_flag: true,
 
         }
     }
@@ -180,13 +163,13 @@ pub struct TCPv4ServiceBindingProtocol {
 #[repr(C)]
 #[unsafe_protocol("65530BC7-A359-410F-B010-5AADC7EC2B62")]
 pub struct TCPv4Protocol {
-    get_mode_data: extern "efiapi" fn(
+    pub(crate) get_mode_data: extern "efiapi" fn(
         this: &Self,
-        out_connection_state: &mut UnmodelledPointer,
-        out_config_data: &mut UnmodelledPointer,
-        out_ip4_mode_data: &mut UnmodelledPointer,
-        out_managed_network_config_data: &mut UnmodelledPointer,
-        out_simple_network_mode: &mut UnmodelledPointer,
+        out_connection_state: Option<&mut UnmodelledPointer>,
+        out_config_data: Option<&mut UnmodelledPointer>,
+        out_ip4_mode_data: Option<&mut IPv4ModeData>,
+        out_managed_network_config_data: Option<&mut UnmodelledPointer>,
+        out_simple_network_mode: Option<&mut UnmodelledPointer>,
     ) -> Status,
 
     pub(crate) configure: extern "efiapi" fn(
