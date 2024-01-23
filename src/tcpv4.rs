@@ -271,19 +271,24 @@ impl TCPv4Protocol {
         }
     }
 
-    pub fn connect(&mut self, bs: &BootServices, _lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>) {
+    pub fn connect(
+        &mut self,
+        bs: &BootServices,
+        lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>,
+    ) {
         unsafe {
-            let event = _create_event(bs, |_event| {
-                info!("Callback: connection completed!");
+            let lifecycle_clone = Rc::clone(&lifecycle);
+            let event = _create_event(bs, move |_e| {
+                info!("Callback: connection completed! {lifecycle_clone:p}");
+                lifecycle_clone.borrow_mut().is_waiting_for_connect_to_complete = false;
             });
             let completion_token = TCPv4CompletionToken::new(event.unsafe_clone());
-            //lifecycle.is_waiting_for_connect_to_complete = true;
+            lifecycle.borrow_mut().is_waiting_for_connect_to_complete = true;
             (self.connect_fn)(
                 &self,
                 &completion_token,
             ).to_result().expect("Failed to call Connect()");
             bs.wait_for_event(&mut [event.unsafe_clone()]).expect("Failed to wait for connection to complete");
-            //info!("Finished waiting for event!");
             bs.close_event(event).expect("Failed to close event");
         }
     }
@@ -291,17 +296,19 @@ impl TCPv4Protocol {
     pub fn transmit(
         &mut self,
         bs: &BootServices,
-        _lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>,
+        lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>,
         data: &[u8],
     ) {
+        let lifecycle_clone = Rc::clone(&lifecycle);
         unsafe {
             let event = _create_event(
                 &bs,
-                |_e|{
-                    info!("Callback: transmit completed!")
+                move |_e|{
+                    info!("Callback: transmit completed!");
+                    lifecycle_clone.borrow_mut().is_waiting_for_connect_to_complete = false;
                 }
             );
-            //lifecycle.is_waiting_for_transmit_to_complete = true;
+            lifecycle.borrow_mut().is_waiting_for_transmit_to_complete = true;
             let tx_data = TCPv4TransmitData::new(data);
             let io_token = TCPv4IoToken::new(event.unsafe_clone(), tx_data);
             let result = (self.transmit_fn)(
@@ -343,8 +350,9 @@ unsafe extern "efiapi" fn _call_closure<F>(
     let callback_ptr = unwrapped_context as *mut F;
     let callback = &mut *callback_ptr;
     callback(event);
-    // Drop the box carrying the closure
-    let _ = Box::from_raw(unwrapped_context as *mut _);
+    // Safety: *Don't drop the box* that carries the closure, because
+    // the closure might be invoked again.
+    // let _ = Box::from_raw(unwrapped_context as *mut _);
 }
 
 unsafe fn cast_ctx<T>(raw_val: Option<core::ptr::NonNull<c_void>>) -> &'static mut T {

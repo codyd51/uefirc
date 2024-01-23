@@ -81,7 +81,7 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
 
     //let tx_data = TCPv4TransmitData::new(b"NICK phillip-testing\r\n");
     //info!("Tx data {tx_data:?}");
-    for _ in 0..1 {
+    for _ in 0..5 {
         //info!("Start iteration {i}");
         tcp.transmit(&bs, &lifecycle, b"NICK phillip-testing\r\n");
         //tcp.transmit(&bs, &mut lifecycle, b"");
