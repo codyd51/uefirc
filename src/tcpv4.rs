@@ -5,9 +5,11 @@
 // HTTP: 7A59B29B-910B-4171-8242-A85A0DF25B5B BDB4C020
 
 use alloc::boxed::Box;
+use alloc::rc::Rc;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::alloc::Layout;
+use core::cell::RefCell;
 use core::ffi::c_void;
 use core::intrinsics::size_of;
 use core::mem;
@@ -280,7 +282,7 @@ impl TCPv4Protocol {
         info!("Callback: Connection completed!");
     }
 
-    pub fn connect(&mut self, bs: &BootServices, lifecycle: &mut TCPv4ConnectionLifecycleManager) {
+    pub fn connect(&mut self, bs: &BootServices, lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>) {
         unsafe {
             /*
             let event = bs.create_event(
@@ -290,13 +292,39 @@ impl TCPv4Protocol {
                 Some(core::ptr::NonNull::new(lifecycle as *mut _ as *mut c_void).unwrap()),
             ).unwrap();
             */
+            /*
             let event = _create_event(
                 bs,
                 Some(Self::_handle_connect_completed),
                 Some(lifecycle),
             );
+            */
+            /*
+            let event = _create_event2(bs, |lifecycle: Rc<RefCell<TCPv4ConnectionLifecycleManager>>| {
+                let lifecycle = lifecycle.borrow_mut();
+                lifecycle.is_waiting_for_connect_to_complete = false;
+                info!("Callback: connection completed!");
+            });
+            */
+            let event = _create_event2(bs, |event| {
+                info!("Callback: connection completed! (CLOSURE {event:?})");
+            });
+            /*
+            let data = Box::into_raw(Box::new(callback));
+            let notify_ctx = core::ptr::NonNull(ctx as *mut _ as *mut c_void).unwrap());
+
+            unsafe {
+                bs.create_event(
+                    EventType::NOTIFY_WAIT,
+                    Tpl::CALLBACK,
+                    callback,
+                    raw_notify_ctx,
+                ).expect("Failed to create event")
+            }
+             */
+
             let completion_token = TCPv4CompletionToken::new(event.unsafe_clone());
-            lifecycle.is_waiting_for_connect_to_complete = true;
+            //lifecycle.is_waiting_for_connect_to_complete = true;
             (self.connect_fn)(
                 &self,
                 &completion_token,
@@ -316,16 +344,17 @@ impl TCPv4Protocol {
     pub fn transmit(
         &mut self,
         bs: &BootServices,
-        lifecycle: &mut TCPv4ConnectionLifecycleManager,
+        lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>,
         data: &[u8],
     ) {
         unsafe {
-            let event = _create_event(
+            let event = _create_event::<()>(
                 bs,
                 Some(Self::_handle_transmit_completed),
-                Some(lifecycle),
+                //Some(Rc::clone(&lifecycle)),
+                None,
             );
-            lifecycle.is_waiting_for_transmit_to_complete = true;
+            //lifecycle.is_waiting_for_transmit_to_complete = true;
             let tx_data = TCPv4TransmitData::new(data);
             let io_token = TCPv4IoToken::new(event.unsafe_clone(), tx_data);
             let result = (self.transmit_fn)(
@@ -362,6 +391,35 @@ fn _create_event<T>(
             raw_notify_ctx,
         ).expect("Failed to create event")
     }
+}
+
+fn _create_event2<F>(
+    bs: &BootServices,
+    callback: F,
+) -> Event
+where
+        F: FnMut(Event) + 'static {
+    let data = Box::into_raw(Box::new(callback));
+    unsafe {
+        bs.create_event(
+            EventType::NOTIFY_WAIT,
+            Tpl::CALLBACK,
+            Some(_call_closure::<F> as EventNotifyFn),
+            Some(NonNull::new(data as *mut _ as *mut c_void).unwrap()),
+        ).expect("Failed to create event")
+    }
+}
+
+unsafe extern "efiapi" fn _call_closure<F>(
+    event: Event,
+    raw_context: Option<NonNull<c_void>>,
+)
+    where
+        F: FnMut(Event) + 'static {
+    let unwrapped_context = cast_ctx(raw_context);
+    let callback_ptr = unwrapped_context as *mut F;
+    let callback = &mut *callback_ptr;
+    callback(event);
 }
 
 unsafe fn cast_ctx<T>(raw_val: Option<core::ptr::NonNull<c_void>>) -> &'static mut T {

@@ -7,8 +7,10 @@ mod ipv4;
 
 extern crate alloc;
 
+use alloc::rc::Rc;
 use alloc::vec;
 use alloc::vec::Vec;
+use core::cell::RefCell;
 use core::ffi::c_void;
 use core::mem;
 use core::ptr::{null, NonNull};
@@ -92,14 +94,14 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     info!("Got connection state: {connection_state:?}");
     */
 
-    let mut lifecycle = TCPv4ConnectionLifecycleManager::new();
-    tcp.connect(&bs, &mut lifecycle);
+    let mut lifecycle = Rc::new(RefCell::new(TCPv4ConnectionLifecycleManager::new()));
+    tcp.connect(&bs, &lifecycle);
 
     //let tx_data = TCPv4TransmitData::new(b"NICK phillip-testing\r\n");
     //info!("Tx data {tx_data:?}");
     for _ in 0..1 {
         //info!("Start iteration {i}");
-        tcp.transmit(&bs, &mut lifecycle, b"NICK phillip-testing\r\n");
+        tcp.transmit(&bs, &lifecycle, b"NICK phillip-testing\r\n");
         //tcp.transmit(&bs, &mut lifecycle, b"");
         //info!("Finished iteration {i}");
     }
