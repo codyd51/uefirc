@@ -9,6 +9,7 @@ use core::alloc::Layout;
 use core::ffi::c_void;
 use core::intrinsics::size_of;
 use core::ptr::{copy_nonoverlapping, null};
+use log::info;
 use uefi::{Event, Handle, Status};
 
 use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput};
@@ -301,7 +302,7 @@ pub struct TCPv4TransmitData {
     urgent: bool,
     data_length: u32,
     fragment_count: u32,
-    fragment_table: [TCPv4FragmentData; 1],
+    fragment_table: [TCPv4FragmentData; 0],
 }
 
 impl TCPv4TransmitData {
@@ -309,10 +310,12 @@ impl TCPv4TransmitData {
         let fragment = TCPv4FragmentData::new(data);
         let fragment_ref = &fragment;
         let size_of_fragment = core::mem::size_of::<TCPv4FragmentData>();
+        info!("size of fragment {size_of_fragment}");
         let total_size = core::mem::size_of::<Self>() + size_of_fragment;
+        info!("total_size {total_size}");
         let layout = Layout::from_size_align(
             total_size,
-            core::mem::align_of::<usize>(),
+            core::mem::align_of::<Self>(),
         ).unwrap();
         let s = unsafe {
             let mut s = alloc::alloc::alloc(layout) as *mut Self;
@@ -326,8 +329,15 @@ impl TCPv4TransmitData {
                 size_of_fragment,
             );
             &mut *s
+
+            /*
+            let fragment_table_ptr = s.add(1) as *mut TCPv4FragmentData; // Offset by the size of the struct
+            core::ptr::write(fragment_table_ptr, fragment);
+            &mut *s
+             */
         };
         unsafe { core::ptr::read(s) }
+        //unsafe {Box::from_raw(s)}
 
         /*
         let fragment = TCPv4FragmentData::new(data);

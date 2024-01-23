@@ -72,9 +72,7 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     let bt = system_table.boot_services();
 
     let tcp_service_binding = get_tcp_service_binding_protocol(bt);
-    //info!("Got TCP service binding protocol {tcp_service_binding:?}");
     let tcp = get_tcp_protocol(bt, &tcp_service_binding);
-    //info!("Got TCP protocol {tcp:?}");
 
     // 'Brutally reset' the TCP stack
     let result = (tcp.configure)(
@@ -146,7 +144,6 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     for i in 0..10 {
         info!("Running another iteration {i}");
         let tx_data = TCPv4TransmitData::new(b"NICK phillip-testing\r\n");
-        //io.completion_token.event
         let event = unsafe {
             bt.create_event(
                 EventType::NOTIFY_SIGNAL,
@@ -176,13 +173,6 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
 
 unsafe extern "efiapi" fn handle_notify_signal(e: Event, _ctx: Option<NonNull<c_void>>) {
     info!("handle_notify_signal {e:?}");
-    // DEBUG: The UEFI spec does not guarantee that this printout will work, as
-    //        the services used by logging might already have been shut down.
-    //        But it works on current OVMF, and can be used as a handy way to
-    //        check that the callback does get called.
-    //
-    // info!("Shutting down the UEFI utility library");
-    //SYSTEM_TABLE.store(ptr::null_mut(), Ordering::Release);
 }
 
 unsafe extern "efiapi" fn handle_connection_operation_completed(e: Event, _ctx: Option<NonNull<c_void>>) {
