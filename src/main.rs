@@ -4,6 +4,7 @@
 
 mod tcpv4;
 mod ipv4;
+mod event;
 
 extern crate alloc;
 

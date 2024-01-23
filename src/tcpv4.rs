@@ -1,10 +1,3 @@
-// DNS4: AE3D28CC-E05B-4FA1-A011-7EB55A3F1401 BDB49030
-// UDP4: 3AD9DF29-4501-478D-B1F8-7F7FE70E50F3 BDB49D38
-// IP4: 41D94CD2-35B6-455A-8258-D4E51334AADD BDB496A0
-// TCP4: 65530BC7-A359-410F-B010-5AADC7EC2B62 BDB4CE38
-// HTTP: 7A59B29B-910B-4171-8242-A85A0DF25B5B BDB4C020
-
-use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::string::{String, ToString};
 use core::alloc::Layout;
@@ -16,11 +9,10 @@ use core::ptr::copy_nonoverlapping;
 use log::info;
 use uefi::{Error, Event, Handle, Status, StatusExt};
 use uefi::prelude::BootServices;
-use core::ptr::NonNull;
 
-use uefi::table::boot::{EventType, Tpl};
 use uefi::proto::unsafe_protocol;
 use crate::ipv4::{IPv4Address, IPv4ModeData};
+use crate::event::EventExt;
 
 #[derive(Debug)]
 #[repr(C)]
@@ -278,7 +270,7 @@ impl TCPv4Protocol {
     ) {
         unsafe {
             let lifecycle_clone = Rc::clone(&lifecycle);
-            let event = _create_event(bs, move |_e| {
+            let event = Event::new(bs, move |_e| {
                 info!("Callback: connection completed! {lifecycle_clone:p}");
                 lifecycle_clone.borrow_mut().is_waiting_for_connect_to_complete = false;
             });
@@ -301,13 +293,10 @@ impl TCPv4Protocol {
     ) {
         let lifecycle_clone = Rc::clone(&lifecycle);
         unsafe {
-            let event = _create_event(
-                &bs,
-                move |_e|{
-                    info!("Callback: transmit completed!");
-                    lifecycle_clone.borrow_mut().is_waiting_for_connect_to_complete = false;
-                }
-            );
+            let event = Event::new(bs, move |_e| {
+                info!("Callback: transmit completed!");
+                lifecycle_clone.borrow_mut().is_waiting_for_connect_to_complete = false;
+            });
             lifecycle.borrow_mut().is_waiting_for_transmit_to_complete = true;
             let tx_data = TCPv4TransmitData::new(data);
             let io_token = TCPv4IoToken::new(event.unsafe_clone(), tx_data);
@@ -321,43 +310,6 @@ impl TCPv4Protocol {
             bs.close_event(event).expect("Failed to close event");
         }
     }
-}
-
-fn _create_event<F>(
-    bs: &BootServices,
-    callback: F,
-) -> Event
-where
-        F: FnMut(Event) + 'static {
-    let data = Box::into_raw(Box::new(callback));
-    unsafe {
-        bs.create_event(
-            EventType::NOTIFY_WAIT,
-            Tpl::CALLBACK,
-            Some(_call_closure::<F>),
-            Some(NonNull::new(data as *mut _ as *mut c_void).unwrap()),
-        ).expect("Failed to create event")
-    }
-}
-
-unsafe extern "efiapi" fn _call_closure<F>(
-    event: Event,
-    raw_context: Option<NonNull<c_void>>,
-)
-    where
-        F: FnMut(Event) + 'static {
-    let unwrapped_context = cast_ctx(raw_context);
-    let callback_ptr = unwrapped_context as *mut F;
-    let callback = &mut *callback_ptr;
-    callback(event);
-    // Safety: *Don't drop the box* that carries the closure, because
-    // the closure might be invoked again.
-    // let _ = Box::from_raw(unwrapped_context as *mut _);
-}
-
-unsafe fn cast_ctx<T>(raw_val: Option<core::ptr::NonNull<c_void>>) -> &'static mut T {
-    let val_ptr = raw_val.unwrap().as_ptr() as *mut c_void as *mut T;
-    &mut *val_ptr
 }
 
 #[derive(Debug)]
