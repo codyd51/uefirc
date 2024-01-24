@@ -2,7 +2,6 @@ use alloc::format;
 use core::alloc::Layout;
 use core::ffi::c_void;
 use core::fmt::{Debug, Formatter};
-use core::mem::ManuallyDrop;
 use core::ptr::copy_nonoverlapping;
 use uefi::{Event, Status};
 use crate::event::ManagedEvent;

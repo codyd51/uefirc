@@ -4,7 +4,6 @@ use core::alloc::Layout;
 use core::mem;
 use core::mem::ManuallyDrop;
 use core::ptr::copy_nonoverlapping;
-use log::info;
 use crate::tcpv4::TCPv4FragmentData;
 
 /// This type is necessary because the underlying structure has a flexible array member.
@@ -99,7 +98,6 @@ impl TCPv4ReceiveData {
                 let fragment_ptr = fragment_table.add(i as _);
                 let fragment = &*fragment_ptr;
                 let fragment_buf = fragment.fragment_buf as *const u8;
-                let c = self.fragment_count;
                 let fragment_slice = core::slice::from_raw_parts(fragment_buf, self.data_length as _);
                 //info!("Fragment {i} {fragment:?} {fragment_buf:?} count {c} slice {fragment_slice:?}");
                 out.extend_from_slice(fragment_slice);

@@ -2,7 +2,6 @@ use core::alloc::Layout;
 use core::mem;
 use core::mem::ManuallyDrop;
 use core::ptr::copy_nonoverlapping;
-use log::info;
 use crate::tcpv4::TCPv4FragmentData;
 
 /// This type is necessary because the underlying structure has a flexible array member.

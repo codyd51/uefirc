@@ -1,9 +1,8 @@
-use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::{String, ToString};
 use core::cell::RefCell;
 use log::info;
-use uefi::{Event, Handle, Status, StatusExt};
+use uefi::{Handle, Status, StatusExt};
 use uefi::prelude::BootServices;
 use crate::event::ManagedEvent;
 use crate::ipv4::{IPv4Address, IPv4ModeData};
@@ -160,19 +159,17 @@ impl TCPv4Protocol {
         bs: &BootServices,
         lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>,
     ) {
-        unsafe {
-            let lifecycle_clone = Rc::clone(&lifecycle);
-            let event = ManagedEvent::new(bs, move |_e| {
-                lifecycle_clone.borrow_mut().register_connecting_complete();
-            });
-            lifecycle.borrow_mut().register_started_connecting();
-            let completion_token = TCPv4CompletionToken::new(&event);
-            (self.connect_fn)(
-                &self,
-                &completion_token,
-            ).to_result().expect("Failed to call Connect()");
-            event.wait();
-        }
+        let lifecycle_clone = Rc::clone(&lifecycle);
+        let event = ManagedEvent::new(bs, move |_e| {
+            lifecycle_clone.borrow_mut().register_connecting_complete();
+        });
+        lifecycle.borrow_mut().register_started_connecting();
+        let completion_token = TCPv4CompletionToken::new(&event);
+        (self.connect_fn)(
+            &self,
+            &completion_token,
+        ).to_result().expect("Failed to call Connect()");
+        event.wait();
     }
 
     pub fn transmit(
@@ -182,70 +179,66 @@ impl TCPv4Protocol {
         data: &[u8],
     ) {
         let lifecycle_clone = Rc::clone(&lifecycle);
-        unsafe {
-            let event = ManagedEvent::new(bs, move |_e| {
-                lifecycle_clone.borrow_mut().register_transmitting_complete();
-            });
-            lifecycle.borrow_mut().register_started_transmitting();
+        let event = ManagedEvent::new(bs, move |_e| {
+            lifecycle_clone.borrow_mut().register_transmitting_complete();
+        });
+        lifecycle.borrow_mut().register_started_transmitting();
 
-            let tx_data_handle = TCPv4TransmitDataHandle::new(data);
-            let tx_data = tx_data_handle.get_data_ref();
-            let io_token = TCPv4IoToken::new(&event, Some(&tx_data), None);
-            let result = (self.transmit_fn)(
-                &self,
-                &io_token,
-            );
-            result.to_result().expect("Failed to run transmit function");
-            match str::from_utf8(&data) {
-                Ok(v) => {
-                    info!("TX {v}");
-                },
-                Err(e) => {
-                    info!("Transmit data (no decode) {data:?}");
-                }
-            };
-            event.wait();
-        }
+        let tx_data_handle = TCPv4TransmitDataHandle::new(data);
+        let tx_data = tx_data_handle.get_data_ref();
+        let io_token = TCPv4IoToken::new(&event, Some(&tx_data), None);
+        let result = (self.transmit_fn)(
+            &self,
+            &io_token,
+        );
+        result.to_result().expect("Failed to run transmit function");
+        match str::from_utf8(&data) {
+            Ok(v) => {
+                info!("TX {v}");
+            },
+            Err(_e) => {
+                info!("Transmit data (no decode) {data:?}");
+            }
+        };
+        event.wait();
     }
 
     pub fn receive(
         &mut self,
         bs: &BootServices,
-        lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>,
+        _lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>,
     ) {
-        let lifecycle_clone = Rc::clone(&lifecycle);
-        unsafe {
-            let event = ManagedEvent::new(bs, move |e| {
-                //info!("Callback: Receive complete! {e:?}");
-                //lifecycle_clone.borrow_mut().register_transmitting_complete();
-            });
-            //lifecycle.borrow_mut().register_started_transmitting();
+        //let lifecycle_clone = Rc::clone(&lifecycle);
+        let event = ManagedEvent::new(bs, move |_e| {
+            //info!("Callback: Receive complete! {e:?}");
+            //lifecycle_clone.borrow_mut().register_transmitting_complete();
+        });
+        //lifecycle.borrow_mut().register_started_transmitting();
 
-            let rx_data_handle = TCPv4ReceiveDataHandle::new();
-            let rx_data = rx_data_handle.get_data_ref();
-            let io_token = TCPv4IoToken::new(&event, None, Some(&rx_data));
-            //info!("io token {io_token:?}");
-            let result = (self.receive_fn)(
-                &self,
-                &io_token,
-            );
-            //info!("Receive return value: {result:?}");
-            result.to_result().expect("Failed to run receive function");
-            event.wait();
-            let data = rx_data.read_buffers();
-            /*
-            info!("Recv data {data:?}");
-            info!("IO token {io_token:?}");
-             */
-            match str::from_utf8(&data) {
-                Ok(v) => {
-                    //info!("Received data: {v}");
-                    info!("RX {v}");
-                },
-                Err(e) => {
-                    info!("Received data (no decode) {data:?}");
-                }
-            };
-        }
+        let rx_data_handle = TCPv4ReceiveDataHandle::new();
+        let rx_data = rx_data_handle.get_data_ref();
+        let io_token = TCPv4IoToken::new(&event, None, Some(&rx_data));
+        //info!("io token {io_token:?}");
+        let result = (self.receive_fn)(
+            &self,
+            &io_token,
+        );
+        //info!("Receive return value: {result:?}");
+        result.to_result().expect("Failed to run receive function");
+        event.wait();
+        let data = rx_data.read_buffers();
+        /*
+        info!("Recv data {data:?}");
+        info!("IO token {io_token:?}");
+         */
+        match str::from_utf8(&data) {
+            Ok(v) => {
+                //info!("Received data: {v}");
+                info!("RX {v}");
+            },
+            Err(_e) => {
+                info!("Received data (no decode) {data:?}");
+            }
+        };
     }
 }
