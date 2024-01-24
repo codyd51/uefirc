@@ -10,6 +10,7 @@ extern crate alloc;
 
 use alloc::rc::Rc;
 use core::cell::RefCell;
+use log::info;
 use uefi::prelude::*;
 use uefi::table::boot::{OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol};
 use crate::ipv4::IPv4Address;
@@ -79,9 +80,14 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     let lifecycle = Rc::new(RefCell::new(TCPv4ConnectionLifecycleManager::new()));
     tcp.connect(&bs, &lifecycle);
 
-    for _ in 0..6 {
+    for _ in 0..2 {
         tcp.transmit(&bs, &lifecycle, b"NICK phillip-testing\r\n");
+        for _ in 0..3 {
+            info!("Receiving next...");
+            tcp.receive(&bs, &lifecycle);
+        }
     }
+    info!("All done!");
 
     loop {
         bs.stall(1_000_000);

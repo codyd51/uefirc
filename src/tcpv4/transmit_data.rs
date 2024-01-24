@@ -21,12 +21,12 @@ impl TCPv4TransmitDataHandle {
     fn total_layout_size(fragment_count: usize) -> usize {
         let size_of_fragments = mem::size_of::<ManuallyDrop<TCPv4FragmentData>>() * fragment_count;
         let ret = mem::size_of::<Self>() + size_of_fragments;
-        info!("Total layout size: {ret}");
+        //info!("Total layout size: {ret}");
         ret
     }
 
     pub(crate) fn new(data: &[u8]) -> Self {
-        let fragment = ManuallyDrop::new(TCPv4FragmentData::new(data));
+        let fragment = ManuallyDrop::new(TCPv4FragmentData::with_data(data));
         let layout = Layout::from_size_align(
             Self::total_layout_size(1),
             mem::align_of::<Self>(),
@@ -61,7 +61,7 @@ impl TCPv4TransmitDataHandle {
 impl Drop for TCPv4TransmitDataHandle {
     fn drop(&mut self) {
         unsafe {
-            info!("Dropping TX handle");
+            //info!("Dropping TX handle");
 
             let ptr = self.ptr as *mut TCPv4TransmitData;
 

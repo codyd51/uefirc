@@ -53,7 +53,7 @@ impl<F> Drop for ManagedEvent<'_, F>
 where
     F: FnMut(Event) + 'static {
     fn drop(&mut self) {
-        info!("Dropping ManagedEvent");
+        //info!("Dropping ManagedEvent");
         unsafe {
             // Close the UEFI handle
             // Safety: We're dropping the event here and don't use the handle again after

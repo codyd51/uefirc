@@ -1,10 +1,14 @@
+use alloc::format;
 use core::alloc::Layout;
 use core::ffi::c_void;
+use core::fmt::{Debug, Formatter};
+use core::mem::ManuallyDrop;
 use core::ptr::copy_nonoverlapping;
 use uefi::{Event, Status};
 use crate::event::ManagedEvent;
 
 use crate::ipv4::IPv4Address;
+use crate::tcpv4::receive_data::TCPv4ReceiveData;
 use crate::tcpv4::TCPv4TransmitData;
 
 #[derive(Debug)]
@@ -116,6 +120,7 @@ impl<'a> TCPv4ConfigData<'a> {
     }
 }
 
+#[derive(Debug)]
 #[repr(C)]
 pub struct TCPv4IoToken<'a> {
     pub completion_token: TCPv4CompletionToken,
@@ -123,19 +128,43 @@ pub struct TCPv4IoToken<'a> {
 }
 
 impl<'a> TCPv4IoToken<'a> {
-    pub fn new<F>(event: &ManagedEvent<'a, F>, tx: &'a TCPv4TransmitData) -> Self
+    pub fn new<F>(
+        event: &ManagedEvent<'a, F>,
+        tx: Option<&'a TCPv4TransmitData>,
+        rx: Option<&'a TCPv4ReceiveData>,
+    ) -> Self
     where F: FnMut(Event) + 'static {
+        let packet = {
+            if tx.is_some() {
+                TCPv4Packet { tx_data: tx }
+            }
+            else {
+                rx.expect("Either RX or TX data handles must be provided");
+                TCPv4Packet { rx_data: rx }
+            }
+        };
         Self {
             completion_token: TCPv4CompletionToken::new(event),
-            packet: TCPv4Packet { tx_data: tx },
+            packet,
         }
     }
 }
 
 #[repr(C)]
 union TCPv4Packet<'a> {
-    rx_data: &'a TCPv4ReceiveData<'a>,
-    tx_data: &'a TCPv4TransmitData,
+    rx_data: Option<&'a TCPv4ReceiveData>,
+    tx_data: Option<&'a TCPv4TransmitData>,
+}
+
+impl Debug for TCPv4Packet<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        unsafe {
+            let rx_data = self.rx_data;
+            let tx_data = self.tx_data;
+            f.write_str(&format!("<TCPv4Packet {rx_data:?} {tx_data:?}"))?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -160,26 +189,32 @@ impl TCPv4CompletionToken {
 #[derive(Debug)]
 #[repr(C)]
 pub struct TCPv4FragmentData {
-    fragment_length: u32,
-    fragment_buf: *const c_void,
+    pub(crate) fragment_length: u32,
+    pub(crate) fragment_buf: *const c_void,
 }
 
 impl TCPv4FragmentData {
-    pub fn new(data: &[u8]) -> Self {
+    pub fn with_buffer_len(len: usize) -> Self {
+        unsafe {
+            let layout = Layout::array::<u8>(len).unwrap();
+            let buffer = alloc::alloc::alloc(layout);
+            Self {
+                fragment_length: len as u32,
+                fragment_buf: buffer as *const c_void,
+            }
+        }
+    }
+    pub fn with_data(data: &[u8]) -> Self {
         unsafe {
             let data_len = data.len();
-            let layout = Layout::array::<u8>(data_len).unwrap();
-            let buffer = alloc::alloc::alloc(layout);
-            //info!("Allocated fragment {buffer:?} of size {data_len:?}");
+            let _self = Self::with_buffer_len(data_len);
+            let buffer = _self.fragment_buf as *mut u8;
             copy_nonoverlapping(
                 data.as_ptr(),
                 buffer,
                 data_len,
             );
-            Self {
-                fragment_length: data_len as u32,
-                fragment_buf: buffer as *const c_void,
-            }
+            _self
         }
     }
 }
@@ -192,15 +227,6 @@ impl Drop for TCPv4FragmentData {
             //println!("Deallocated fragment {:?}", self.fragment_buf);
         }
     }
-}
-
-#[derive(Debug)]
-#[repr(C)]
-pub struct TCPv4ReceiveData<'a> {
-    urgent_flag: bool,
-    data_length: u32,
-    fragment_count: u32,
-    fragment_table: &'a [TCPv4FragmentData],
 }
 
 #[derive(Debug)]
