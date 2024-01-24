@@ -2,7 +2,7 @@ use alloc::rc::Rc;
 use alloc::string::{String, ToString};
 use core::cell::RefCell;
 use log::info;
-use uefi::{Handle, Status, StatusExt};
+use uefi::{Event, Handle, Status, StatusExt};
 use uefi::prelude::BootServices;
 use crate::event::ManagedEvent;
 use crate::ipv4::{IPv4Address, IPv4ModeData};
@@ -163,7 +163,7 @@ impl TCPv4Protocol {
                 lifecycle_clone.borrow_mut().register_connecting_complete();
             });
             lifecycle.borrow_mut().register_started_connecting();
-            let completion_token = TCPv4CompletionToken::new(event.event.unsafe_clone());
+            let completion_token = TCPv4CompletionToken::new(&event);
             (self.connect_fn)(
                 &self,
                 &completion_token,
@@ -187,7 +187,7 @@ impl TCPv4Protocol {
 
             let tx_data_handle = TCPv4TransmitDataHandle::new(data);
             let tx_data = tx_data_handle.get_data_ref();
-            let io_token = TCPv4IoToken::new(event.event.unsafe_clone(), &tx_data);
+            let io_token = TCPv4IoToken::new(&event, &tx_data);
             let result = (self.transmit_fn)(
                 &self,
                 &io_token,

@@ -2,6 +2,7 @@ use core::alloc::Layout;
 use core::ffi::c_void;
 use core::ptr::copy_nonoverlapping;
 use uefi::{Event, Status};
+use crate::event::ManagedEvent;
 
 use crate::ipv4::IPv4Address;
 use crate::tcpv4::TCPv4TransmitData;
@@ -122,7 +123,8 @@ pub struct TCPv4IoToken<'a> {
 }
 
 impl<'a> TCPv4IoToken<'a> {
-    pub fn new(event: Event, tx: &'a TCPv4TransmitData) -> Self {
+    pub fn new<F>(event: &ManagedEvent<'a, F>, tx: &'a TCPv4TransmitData) -> Self
+    where F: FnMut(Event) + 'static {
         Self {
             completion_token: TCPv4CompletionToken::new(event),
             packet: TCPv4Packet { tx_data: tx },
@@ -144,9 +146,12 @@ pub struct TCPv4CompletionToken {
 }
 
 impl TCPv4CompletionToken {
-    pub fn new(event: Event) -> Self {
+    pub fn new<F>(event: &ManagedEvent<F>) -> Self
+    where F: FnMut(Event) + 'static {
+        // Safety: The lifetime of this token is bound by the lifetime of the ManagedEvent.
+        let event_clone = unsafe { event.event.unsafe_clone() };
         Self {
-            event,
+            event: event_clone,
             status: Status::SUCCESS,
         }
     }
