@@ -12,7 +12,7 @@ use uefi::prelude::BootServices;
 
 use uefi::proto::unsafe_protocol;
 use crate::ipv4::{IPv4Address, IPv4ModeData};
-use crate::event::EventExt;
+use crate::event::ManagedEvent;
 
 #[derive(Debug)]
 #[repr(C)]
@@ -270,18 +270,17 @@ impl TCPv4Protocol {
     ) {
         unsafe {
             let lifecycle_clone = Rc::clone(&lifecycle);
-            let event = Event::new(bs, move |_e| {
+            let event = ManagedEvent::new(bs, move |_e| {
                 info!("Callback: connection completed! {lifecycle_clone:p}");
                 lifecycle_clone.borrow_mut().is_waiting_for_connect_to_complete = false;
             });
-            let completion_token = TCPv4CompletionToken::new(event.unsafe_clone());
+            let completion_token = TCPv4CompletionToken::new(event.event.unsafe_clone());
             lifecycle.borrow_mut().is_waiting_for_connect_to_complete = true;
             (self.connect_fn)(
                 &self,
                 &completion_token,
             ).to_result().expect("Failed to call Connect()");
-            bs.wait_for_event(&mut [event.unsafe_clone()]).expect("Failed to wait for connection to complete");
-            bs.close_event(event).expect("Failed to close event");
+            bs.wait_for_event(&mut [event.event.unsafe_clone()]).expect("Failed to wait for connection to complete");
         }
     }
 
@@ -293,21 +292,22 @@ impl TCPv4Protocol {
     ) {
         let lifecycle_clone = Rc::clone(&lifecycle);
         unsafe {
-            let event = Event::new(bs, move |_e| {
+            let event = ManagedEvent::new(bs, move |_e| {
                 info!("Callback: transmit completed!");
                 lifecycle_clone.borrow_mut().is_waiting_for_connect_to_complete = false;
             });
             lifecycle.borrow_mut().is_waiting_for_transmit_to_complete = true;
-            let tx_data = TCPv4TransmitData::new(data);
-            let io_token = TCPv4IoToken::new(event.unsafe_clone(), tx_data);
+
+            let tx_data_handle = TCPv4TransmitDataHandle::new(data);
+            let tx_data = tx_data_handle.get_data_ref();
+            let io_token = TCPv4IoToken::new(event.event.unsafe_clone(), &tx_data);
             let result = (self.transmit_fn)(
                 &self,
                 &io_token,
             );
             info!("Transmit return value: {result:?}");
 
-            bs.wait_for_event(&mut [event.unsafe_clone()]).expect("Failed to wait for transmit to complete");
-            bs.close_event(event).expect("Failed to close event");
+            bs.wait_for_event(&mut [event.event.unsafe_clone()]).expect("Failed to wait for transmit to complete");
         }
     }
 }
@@ -395,11 +395,9 @@ impl TCPv4FragmentData {
 impl Drop for TCPv4FragmentData {
     fn drop(&mut self) {
         unsafe {
-            let f = self.fragment_buf;
-            let l = self.fragment_length;
-            info!("Drop TCPv4FragmentData {self:?} {f:?} {l:?}");
             let layout = Layout::array::<u8>(self.fragment_length as usize).unwrap();
             alloc::alloc::dealloc(self.fragment_buf as *mut u8, layout);
+            //println!("Deallocated fragment {:?}", self.fragment_buf);
         }
     }
 }
@@ -413,30 +411,34 @@ pub struct TCPv4ReceiveData<'a> {
     fragment_table: &'a [TCPv4FragmentData],
 }
 
+/// This type is necessary because the underlying structure has a flexible array member.
+/// Due to this, the memory for the instance needs to be carefully managed.
+/// A Box cannot be used because the Box doesn't have the full knowledge of the layout.
+/// A wide pointer also cannot be used because the layout needs to be precisely controlled for FFI.
+/// Therefore, we use a wrapper 'handle' to manage the lifecycle of the allocation manually.
 #[derive(Debug)]
 #[repr(C)]
-pub struct TCPv4TransmitData {
-    push: bool,
-    urgent: bool,
-    data_length: u32,
-    fragment_count: u32,
-    fragment_table: [ManuallyDrop<TCPv4FragmentData>; 0],
+pub struct TCPv4TransmitDataHandle {
+    ptr: *const TCPv4TransmitData,
+    layout: Layout,
 }
 
-impl TCPv4TransmitData {
+impl TCPv4TransmitDataHandle {
     fn total_layout_size(fragment_count: usize) -> usize {
-        let size_of_fragments = mem::size_of::<TCPv4FragmentData>() * fragment_count;
-        mem::size_of::<Self>() + size_of_fragments
+        let size_of_fragments = mem::size_of::<ManuallyDrop<TCPv4FragmentData>>() * fragment_count;
+        let ret = mem::size_of::<Self>() + size_of_fragments;
+        info!("Total layout size: {ret}");
+        ret
     }
 
-    pub(crate) fn new(data: &[u8]) -> &Self {
+    pub(crate) fn new(data: &[u8]) -> Self {
         let fragment = ManuallyDrop::new(TCPv4FragmentData::new(data));
         let layout = Layout::from_size_align(
             Self::total_layout_size(1),
             mem::align_of::<Self>(),
         ).unwrap();
         unsafe {
-            let ptr = alloc::alloc::alloc(layout) as *mut Self;
+            let ptr = alloc::alloc::alloc(layout) as *mut TCPv4TransmitData;
             (*ptr).push = true;
             (*ptr).urgent = false;
             (*ptr).data_length = data.len() as _;
@@ -448,37 +450,48 @@ impl TCPv4TransmitData {
                 (*ptr).fragment_table.as_mut_ptr(),
                 fragment_count,
             );
-            &*ptr
+
+            Self {
+                ptr: ptr as _,
+                layout,
+            }
+        }
+    }
+
+    fn get_data_ref(&self) -> &TCPv4TransmitData {
+        // Safety: The reference is strictly tied to the lifetime of this handle
+        unsafe { &*self.ptr }
+    }
+}
+
+impl Drop for TCPv4TransmitDataHandle {
+    fn drop(&mut self) {
+        unsafe {
+            info!("Dropping TX handle");
+
+            let ptr = self.ptr as *mut TCPv4TransmitData;
+
+            // First, drop all the fragments
+            let fragment_table: *mut ManuallyDrop<TCPv4FragmentData> = (*ptr).fragment_table.as_mut_ptr();
+            for i in 0..((*ptr).fragment_count as usize) {
+                let fragment_ptr = fragment_table.add(i as _);
+                ManuallyDrop::drop(&mut *fragment_ptr);
+            }
+
+            // Lastly, drop the allocation itself
+            alloc::alloc::dealloc(ptr as *mut u8, self.layout);
         }
     }
 }
 
-impl Drop for TCPv4TransmitData {
-    fn drop(&mut self) {
-        info!("Dropping TCPv4TransmitData {self:?}");
-
-        let ptr = self as *mut Self;
-        unsafe {
-            // First, drop all the fragments
-            let fragment_table: *mut ManuallyDrop<TCPv4FragmentData> = (*ptr).fragment_table.as_mut_ptr();
-            for i in 0..self.fragment_count {
-                let fragment_ptr = fragment_table.add(i as _);
-                let fragment = &mut *fragment_ptr;
-                info!("Freeing fragment #{i}: {fragment:?}");
-                let b = fragment.fragment_buf;
-                let l = fragment.fragment_length;
-                info!("Fragment has buf fragment {b:?} of size {l:?}");
-                ManuallyDrop::drop(fragment);
-            }
-
-            // Finally, drop this allocation
-            let layout = Layout::from_size_align(
-                Self::total_layout_size(self.fragment_count as _),
-                mem::align_of::<Self>(),
-            ).unwrap();
-            alloc::alloc::dealloc(ptr as *mut u8, layout);
-        }
-    }
+#[derive(Debug)]
+#[repr(C)]
+pub struct TCPv4TransmitData {
+    push: bool,
+    urgent: bool,
+    data_length: u32,
+    fragment_count: u32,
+    fragment_table: [ManuallyDrop<TCPv4FragmentData>; 0],
 }
 
 #[derive(Debug)]

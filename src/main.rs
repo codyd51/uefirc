@@ -66,6 +66,8 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     let tcp_service_binding = get_tcp_service_binding_protocol(bs);
     let mut tcp = get_tcp_protocol(bs, &tcp_service_binding);
 
+    let lifecycle = Rc::new(RefCell::new(TCPv4ConnectionLifecycleManager::new()));
+
     //tcp.reset_stack();
     tcp.configure(
         bs,
@@ -77,16 +79,10 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
         )
     ).expect("Failed to configure the TCP connection");
 
-    let lifecycle = Rc::new(RefCell::new(TCPv4ConnectionLifecycleManager::new()));
     tcp.connect(&bs, &lifecycle);
 
-    //let tx_data = TCPv4TransmitData::new(b"NICK phillip-testing\r\n");
-    //info!("Tx data {tx_data:?}");
-    for _ in 0..5 {
-        //info!("Start iteration {i}");
+    for _ in 0..6 {
         tcp.transmit(&bs, &lifecycle, b"NICK phillip-testing\r\n");
-        //tcp.transmit(&bs, &mut lifecycle, b"");
-        //info!("Finished iteration {i}");
     }
 
     loop {
