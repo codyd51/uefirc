@@ -5,34 +5,35 @@ use uefi::prelude::BootServices;
 use uefi::table::boot::{EventType, Tpl};
 use core::ptr::NonNull;
 
-pub struct ManagedEvent<'a, F: FnMut(Event) + 'static> {
+pub struct ManagedEvent<'a> {
     pub event: Event,
-    boxed_closure: *mut F,
+    boxed_closure: *mut (dyn FnMut(Event) + 'static),
     boot_services: &'a BootServices,
 }
 
 /// Higher level modelling on top of the thin wrapper that uefi-rs provides.
 /// The wrapper as-is can't be used because the wrapper can be cheaply cloned and passed around,
 /// whereas we need there to be a single instance per event (so the destructor only runs once).
-impl<'a, F> ManagedEvent<'a, F>
-where
-    F: FnMut(Event) + 'static {
-    pub fn new(
+impl<'a> ManagedEvent<'a> {
+    pub fn new<F>(
         bs: &'a BootServices,
         callback: F,
-    ) -> Self {
-        let data = Box::into_raw(Box::new(callback));
+    ) -> Self
+    where
+        F: FnMut(Event) + 'static {
+        let boxed_closure = Box::new(callback) as Box<dyn FnMut(Event) + 'static>;
+        let boxed_closure = Box::into_raw(boxed_closure);
         unsafe {
             let event = bs.create_event(
                 EventType::NOTIFY_WAIT,
                 Tpl::CALLBACK,
                 Some(call_closure::<F>),
-                Some(NonNull::new(data as *mut _ as *mut c_void).unwrap()),
+                Some(NonNull::new(boxed_closure as *mut _ as *mut c_void).unwrap()),
             ).expect("Failed to create event");
 
             Self {
                 event,
-                boxed_closure: data,
+                boxed_closure,
                 boot_services: bs,
             }
         }
@@ -48,9 +49,7 @@ where
     }
 }
 
-impl<F> Drop for ManagedEvent<'_, F>
-where
-    F: FnMut(Event) + 'static {
+impl Drop for ManagedEvent<'_> {
     fn drop(&mut self) {
         //info!("Dropping ManagedEvent");
         unsafe {
@@ -59,7 +58,7 @@ where
             // passing it to the UEFI function.
             self.boot_services.close_event(self.event.unsafe_clone()).expect("Failed to close event");
             // *Drop the box* that carries the closure.
-            let _ = Box::from_raw(self.boxed_closure as *mut _);
+            let _ = Box::from_raw(self.boxed_closure);
         }
     }
 }

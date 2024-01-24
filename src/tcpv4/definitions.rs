@@ -127,12 +127,11 @@ pub struct TCPv4IoToken<'a> {
 }
 
 impl<'a> TCPv4IoToken<'a> {
-    pub fn new<F>(
-        event: &ManagedEvent<'a, F>,
+    pub fn new(
+        event: &ManagedEvent<'a>,
         tx: Option<&'a TCPv4TransmitData>,
         rx: Option<&'a TCPv4ReceiveData>,
-    ) -> Self
-    where F: FnMut(Event) + 'static {
+    ) -> Self {
         let packet = {
             if tx.is_some() {
                 TCPv4Packet { tx_data: tx }
@@ -174,8 +173,7 @@ pub struct TCPv4CompletionToken {
 }
 
 impl TCPv4CompletionToken {
-    pub fn new<F>(event: &ManagedEvent<F>) -> Self
-    where F: FnMut(Event) + 'static {
+    pub fn new(event: &ManagedEvent) -> Self {
         // Safety: The lifetime of this token is bound by the lifetime of the ManagedEvent.
         let event_clone = unsafe { event.event.unsafe_clone() };
         Self {
