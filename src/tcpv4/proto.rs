@@ -168,7 +168,7 @@ impl TCPv4Protocol {
                 &self,
                 &completion_token,
             ).to_result().expect("Failed to call Connect()");
-            bs.wait_for_event(&mut [event.event.unsafe_clone()]).expect("Failed to wait for connection to complete");
+            event.wait();
         }
     }
 
@@ -193,8 +193,7 @@ impl TCPv4Protocol {
                 &io_token,
             );
             info!("Transmit return value: {result:?}");
-
-            bs.wait_for_event(&mut [event.event.unsafe_clone()]).expect("Failed to wait for transmit to complete");
+            event.wait();
         }
     }
 }

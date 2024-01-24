@@ -38,6 +38,15 @@ where
             }
         }
     }
+
+    pub fn wait(&self) {
+        // Safety: The event clone is discarded after being passed to the UEFI function.
+        unsafe {
+            self.boot_services.wait_for_event(
+                &mut [self.event.unsafe_clone()]
+            ).expect("Failed to wait for transmit to complete");
+        }
+    }
 }
 
 impl<F> Drop for ManagedEvent<'_, F>
@@ -47,6 +56,8 @@ where
         info!("Dropping ManagedEvent");
         unsafe {
             // Close the UEFI handle
+            // Safety: We're dropping the event here and don't use the handle again after
+            // passing it to the UEFI function.
             self.boot_services.close_event(self.event.unsafe_clone()).expect("Failed to close event");
             // *Drop the box* that carries the closure.
             let _ = Box::from_raw(self.boxed_closure as *mut _);
