@@ -1,5 +1,7 @@
 use alloc::rc::Rc;
 use alloc::string::{String, ToString};
+use alloc::vec;
+use alloc::vec::Vec;
 use core::alloc::Layout;
 use core::cell::RefCell;
 use core::ffi::c_void;
@@ -271,11 +273,10 @@ impl TCPv4Protocol {
         unsafe {
             let lifecycle_clone = Rc::clone(&lifecycle);
             let event = ManagedEvent::new(bs, move |_e| {
-                info!("Callback: connection completed! {lifecycle_clone:p}");
-                lifecycle_clone.borrow_mut().is_waiting_for_connect_to_complete = false;
+                lifecycle_clone.borrow_mut().register_connecting_complete();
             });
+            lifecycle.borrow_mut().register_started_connecting();
             let completion_token = TCPv4CompletionToken::new(event.event.unsafe_clone());
-            lifecycle.borrow_mut().is_waiting_for_connect_to_complete = true;
             (self.connect_fn)(
                 &self,
                 &completion_token,
@@ -293,10 +294,9 @@ impl TCPv4Protocol {
         let lifecycle_clone = Rc::clone(&lifecycle);
         unsafe {
             let event = ManagedEvent::new(bs, move |_e| {
-                info!("Callback: transmit completed!");
-                lifecycle_clone.borrow_mut().is_waiting_for_connect_to_complete = false;
+                lifecycle_clone.borrow_mut().register_transmitting_complete();
             });
-            lifecycle.borrow_mut().is_waiting_for_transmit_to_complete = true;
+            lifecycle.borrow_mut().register_started_transmitting();
 
             let tx_data_handle = TCPv4TransmitDataHandle::new(data);
             let tx_data = tx_data_handle.get_data_ref();
@@ -312,18 +312,52 @@ impl TCPv4Protocol {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum TCPv4ConnectionOperation {
+    Connecting,
+    Transmitting,
+}
+
 #[derive(Debug)]
 pub struct TCPv4ConnectionLifecycleManager {
-    is_waiting_for_connect_to_complete: bool,
-    is_waiting_for_transmit_to_complete: bool,
+    pending_operations: Vec<TCPv4ConnectionOperation>,
 }
 
 impl TCPv4ConnectionLifecycleManager {
     pub fn new() -> Self {
         Self {
-            is_waiting_for_connect_to_complete: false,
-            is_waiting_for_transmit_to_complete: false,
+            pending_operations: vec![],
         }
+    }
+
+    fn add_if_not_present(&mut self, op: TCPv4ConnectionOperation) {
+        if !self.pending_operations.contains(&op) {
+            self.pending_operations.push(op)
+        }
+    }
+
+    fn remove_if_present(&mut self, op: TCPv4ConnectionOperation) {
+        if self.pending_operations.contains(&op) {
+            self.pending_operations.retain(|&x| x != op);
+        }
+    }
+
+    pub fn register_started_connecting(&mut self) {
+        self.add_if_not_present(TCPv4ConnectionOperation::Connecting);
+    }
+
+    pub fn register_connecting_complete(&mut self) {
+        self.remove_if_present(TCPv4ConnectionOperation::Connecting);
+        info!("Callback: connection completed!");
+    }
+
+    pub fn register_started_transmitting(&mut self) {
+        self.add_if_not_present(TCPv4ConnectionOperation::Transmitting);
+    }
+
+    pub fn register_transmitting_complete(&mut self) {
+        self.remove_if_present(TCPv4ConnectionOperation::Transmitting);
+        info!("Callback: transmit completed!");
     }
 }
 
