@@ -1,3 +1,4 @@
+use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::{String, ToString};
 use core::cell::RefCell;
@@ -11,6 +12,8 @@ use crate::tcpv4::transmit_data::TCPv4TransmitDataHandle;
 use uefi::proto::unsafe_protocol;
 use crate::tcpv4::definitions::{TCPv4CompletionToken, TCPv4ConfigData, TCPv4ConnectionState, TCPv4IoToken, UnmodelledPointer};
 use uefi::Error;
+use crate::tcpv4::receive_data::TCPv4ReceiveDataHandle;
+use core::str;
 
 #[derive(Debug)]
 #[repr(C)]
@@ -71,7 +74,7 @@ pub struct TCPv4Protocol {
 
     receive_fn: extern "efiapi" fn(
         this: &Self,
-        token: &UnmodelledPointer,
+        token: &TCPv4IoToken,
     ) -> Status,
 
     close_fn: extern "efiapi" fn(
@@ -187,13 +190,62 @@ impl TCPv4Protocol {
 
             let tx_data_handle = TCPv4TransmitDataHandle::new(data);
             let tx_data = tx_data_handle.get_data_ref();
-            let io_token = TCPv4IoToken::new(&event, &tx_data);
+            let io_token = TCPv4IoToken::new(&event, Some(&tx_data), None);
             let result = (self.transmit_fn)(
                 &self,
                 &io_token,
             );
-            info!("Transmit return value: {result:?}");
+            result.to_result().expect("Failed to run transmit function");
+            match str::from_utf8(&data) {
+                Ok(v) => {
+                    info!("TX {v}");
+                },
+                Err(e) => {
+                    info!("Transmit data (no decode) {data:?}");
+                }
+            };
             event.wait();
+        }
+    }
+
+    pub fn receive(
+        &mut self,
+        bs: &BootServices,
+        lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>,
+    ) {
+        let lifecycle_clone = Rc::clone(&lifecycle);
+        unsafe {
+            let event = ManagedEvent::new(bs, move |e| {
+                //info!("Callback: Receive complete! {e:?}");
+                //lifecycle_clone.borrow_mut().register_transmitting_complete();
+            });
+            //lifecycle.borrow_mut().register_started_transmitting();
+
+            let rx_data_handle = TCPv4ReceiveDataHandle::new();
+            let rx_data = rx_data_handle.get_data_ref();
+            let io_token = TCPv4IoToken::new(&event, None, Some(&rx_data));
+            //info!("io token {io_token:?}");
+            let result = (self.receive_fn)(
+                &self,
+                &io_token,
+            );
+            //info!("Receive return value: {result:?}");
+            result.to_result().expect("Failed to run receive function");
+            event.wait();
+            let data = rx_data.read_buffers();
+            /*
+            info!("Recv data {data:?}");
+            info!("IO token {io_token:?}");
+             */
+            match str::from_utf8(&data) {
+                Ok(v) => {
+                    //info!("Received data: {v}");
+                    info!("RX {v}");
+                },
+                Err(e) => {
+                    info!("Received data (no decode) {data:?}");
+                }
+            };
         }
     }
 }
