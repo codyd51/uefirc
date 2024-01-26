@@ -68,29 +68,17 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     let bs: &'static BootServices = unsafe {
         core::mem::transmute(bs)
     };
-
     let tcp_service_binding_protocol = get_tcp_service_binding_protocol(bs);
-    let tcp_service_binding_protocol: ScopedProtocol<'static, TCPv4ServiceBindingProtocol> = unsafe {
-        core::mem::transmute(tcp_service_binding_protocol)
-    };
-    let mut tcp = get_tcp_protocol(bs, &tcp_service_binding_protocol);
-    tcp.configure(
-        bs,
-        TCPv4ConnectionMode::Client(
-            TCPv4ClientConnectionModeParams::new(
-                IPv4Address::new(93, 158, 237, 2),
-                6665,
-            ),
-        )
-    ).expect("Failed to configure the TCP connection");
-
-    tcp.connect(bs);
-    tcp.transmit(bs, b"NICK phillip-testing\r\n");
+    let tcp = get_tcp_protocol(bs, &tcp_service_binding_protocol);
 
     let mut connection = TcpConnection::new(
         bs,
-        &tcp,
+        tcp,
+        IPv4Address::new(93, 158, 237, 2),
+        6665,
     );
+
+    connection.transmit(b"NICK phillip-testing\r\n");
     loop {
         connection.step();
     }
@@ -98,7 +86,7 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
 
 struct TcpConnection<'a> {
     boot_services: &'static BootServices,
-    tcp: &'a ScopedProtocol<'a, TCPv4Protocol>,
+    tcp: ScopedProtocol<'a, TCPv4Protocol>,
     active_rx: Option<(ManagedEvent, TCPv4ReceiveDataHandle)>,
     recv_buffer: Vec<u8>,
 }
@@ -106,8 +94,18 @@ struct TcpConnection<'a> {
 impl<'a> TcpConnection<'a> {
     fn new(
         boot_services: &'static BootServices,
-        tcp: &'a ScopedProtocol<'a, TCPv4Protocol>,
+        mut tcp: ScopedProtocol<'a, TCPv4Protocol>,
+        remote_ip: IPv4Address,
+        remote_port: u16,
     ) -> Self {
+        tcp.configure(
+            boot_services,
+            TCPv4ConnectionMode::Client(
+                TCPv4ClientConnectionModeParams::new(remote_ip, remote_port),
+            )
+        ).expect("Failed to configure the TCP connection");
+        tcp.connect(boot_services);
+
         Self {
             boot_services,
             tcp,
@@ -116,7 +114,11 @@ impl<'a> TcpConnection<'a> {
         }
     }
 
-    fn step(&mut self) {
+    fn transmit(&mut self, data: &[u8]) {
+        self.tcp.transmit(&self.boot_services, data)
+    }
+
+    fn receive_with_timeout(&mut self) {
         let bs = &self.boot_services;
         let timer_event = ManagedEvent::new(
             bs,
@@ -161,7 +163,6 @@ impl<'a> TcpConnection<'a> {
                 // The 'receive' event was triggered, we have data to read!
                 let received_data = rx_data_handle.get_data_ref().read_buffers();
                 self.recv_buffer.extend_from_slice(&received_data);
-                info!("Received data!");
                 match str::from_utf8(&received_data) {
                     Ok(v) => {
                         info!("RX {v}");
@@ -177,5 +178,10 @@ impl<'a> TcpConnection<'a> {
             }
             _ => panic!("Unexpected index"),
         }
+    }
+
+    fn step(&mut self) {
+        // Give ourselves a chance to receive data
+        self.receive_with_timeout();
     }
 }
