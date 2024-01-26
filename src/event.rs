@@ -48,6 +48,15 @@ impl ManagedEvent {
             ).expect("Failed to wait for transmit to complete");
         }
     }
+
+    pub fn wait_for_events(bs: &BootServices, events: &[&Self]) -> usize {
+        // Safety: The event clone is discarded after being passed to the UEFI function.
+        unsafe {
+            bs.wait_for_event(
+                &mut events.iter().map(|e| e.event.unsafe_clone()).collect::<Vec<Event>>()
+            ).expect("Failed to wait for transmit to complete")
+        }
+    }
 }
 
 impl Drop for ManagedEvent {
