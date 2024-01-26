@@ -8,13 +8,18 @@ mod event;
 
 extern crate alloc;
 
+use core::str;
 use alloc::rc::Rc;
+use alloc::vec;
+use alloc::vec::Vec;
 use core::cell::RefCell;
 use log::info;
+use uefi::Event;
 use uefi::prelude::*;
-use uefi::table::boot::{OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol};
+use uefi::table::boot::{EventType, OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol, TimerTrigger};
+use crate::event::ManagedEvent;
 use crate::ipv4::IPv4Address;
-use crate::tcpv4::{TCPv4ClientConnectionModeParams, TCPv4ConnectionLifecycleManager, TCPv4ConnectionMode, TCPv4Protocol, TCPv4ServiceBindingProtocol};
+use crate::tcpv4::{TCPv4ClientConnectionModeParams, TCPv4ConnectionLifecycleManager, TCPv4ConnectionMode, TCPv4IoToken, TCPv4Protocol, TCPv4ReceiveDataHandle, TCPv4ServiceBindingProtocol};
 
 fn get_tcp_service_binding_protocol(bs: &BootServices) -> ScopedProtocol<TCPv4ServiceBindingProtocol> {
     let tcp_service_binding_handle = bs.get_handle_for_protocol::<TCPv4ServiceBindingProtocol>().unwrap();
@@ -67,9 +72,11 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
         core::mem::transmute(bs)
     };
 
-    let tcp_service_binding = get_tcp_service_binding_protocol(bs);
-    let mut tcp = get_tcp_protocol(bs, &tcp_service_binding);
-
+    let tcp_service_binding_protocol = get_tcp_service_binding_protocol(bs);
+    let tcp_service_binding_protocol: ScopedProtocol<'static, TCPv4ServiceBindingProtocol> = unsafe {
+        core::mem::transmute(tcp_service_binding_protocol)
+    };
+    let mut tcp = get_tcp_protocol(bs, &tcp_service_binding_protocol);
     tcp.configure(
         bs,
         TCPv4ConnectionMode::Client(
@@ -80,19 +87,99 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
         )
     ).expect("Failed to configure the TCP connection");
 
-    let lifecycle = Rc::new(RefCell::new(TCPv4ConnectionLifecycleManager::new()));
-    tcp.connect(&bs, &lifecycle);
+    tcp.connect(bs);
+    tcp.transmit(bs, b"NICK phillip-testing\r\n");
 
-    for _ in 0..2 {
-        tcp.transmit(&bs, &lifecycle, b"NICK phillip-testing\r\n");
-        for _ in 0..3 {
-            info!("Receiving next...");
-            tcp.receive(&bs, &lifecycle);
+    let mut connection = TcpConnection::new(
+        bs,
+        &tcp,
+    );
+    loop {
+        connection.step();
+    }
+}
+
+struct TcpConnection<'a> {
+    boot_services: &'static BootServices,
+    tcp: &'a ScopedProtocol<'a, TCPv4Protocol>,
+    active_rx: Option<(ManagedEvent, TCPv4ReceiveDataHandle)>,
+    recv_buffer: Vec<u8>,
+}
+
+impl<'a> TcpConnection<'a> {
+    fn new(
+        boot_services: &'static BootServices,
+        tcp: &'a ScopedProtocol<'a, TCPv4Protocol>,
+    ) -> Self {
+        Self {
+            boot_services,
+            tcp,
+            active_rx: None,
+            recv_buffer: vec![],
         }
     }
-    info!("All done!");
 
-    loop {
-        bs.stall(1_000_000);
+    fn step(&mut self) {
+        let bs = &self.boot_services;
+        let timer_event = ManagedEvent::new(
+            bs,
+            EventType::TIMER,
+            //None,
+            move |e|{
+                info!("Callback: timer");
+            }
+        );
+        unsafe {
+            let one_ms = 1_000;
+            bs.set_timer(&timer_event.event, TimerTrigger::Relative(one_ms * 100))
+        }.expect("Failed to set timer");
+
+        if self.active_rx.is_none() {
+            let rx_event = ManagedEvent::new(
+                bs,
+                EventType::NOTIFY_WAIT,
+                |_| {},
+            );
+            let rx_data_handle = TCPv4ReceiveDataHandle::new();
+            let rx_data = rx_data_handle.get_data_ref();
+            let io_token = TCPv4IoToken::new(&rx_event, None, Some(&rx_data));
+            let result = (self.tcp.receive_fn)(
+                &self.tcp,
+                &io_token,
+            );
+            result.to_result().expect("Failed to initiate recv");
+            self.active_rx = Some((rx_event, rx_data_handle));
+        }
+        else {
+            // The previous iteration must have been a timeout, so the previous RX event and handle
+            // are still in progress / being held by UEFI.
+        }
+        let (rx_event, rx_data_handle) = self.active_rx.as_ref().unwrap();
+
+        let triggered_event_idx = ManagedEvent::wait_for_events(
+            bs,
+            &[rx_event, &timer_event],
+        );
+        match triggered_event_idx {
+            0 => {
+                // The 'receive' event was triggered, we have data to read!
+                let received_data = rx_data_handle.get_data_ref().read_buffers();
+                self.recv_buffer.extend_from_slice(&received_data);
+                info!("Received data!");
+                match str::from_utf8(&received_data) {
+                    Ok(v) => {
+                        info!("RX {v}");
+                    },
+                    Err(e) => {
+                        info!("RX (no decode) {0:?}", received_data);
+                    }
+                };
+                self.active_rx = None;
+            }
+            1 => {
+                // The timeout was triggered, no data is available now
+            }
+            _ => panic!("Unexpected index"),
+        }
     }
 }
