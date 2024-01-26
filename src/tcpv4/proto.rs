@@ -9,7 +9,6 @@ use crate::tcpv4::transmit_data::TCPv4TransmitDataHandle;
 use uefi::proto::unsafe_protocol;
 use crate::tcpv4::definitions::{TCPv4CompletionToken, TCPv4ConfigData, TCPv4ConnectionState, TCPv4IoToken, UnmodelledPointer};
 use uefi::Error;
-use core::str;
 use uefi::table::boot::EventType;
 
 #[derive(Debug)]
@@ -96,7 +95,11 @@ impl TCPv4Protocol {
         ).to_result().expect("Failed to reset TCP stack")
     }
 
-    pub fn configure(&self, bt: &BootServices, connection_mode: TCPv4ConnectionMode) -> uefi::Result<(), String> {
+    pub fn configure(
+        &self,
+        bt: &BootServices,
+        connection_mode: TCPv4ConnectionMode,
+    ) -> uefi::Result<(), String> {
         let configuration = TCPv4ConfigData::new(connection_mode, None);
         // Maximum timeout of 10 seconds
         for _ in 0..10 {
@@ -186,14 +189,6 @@ impl TCPv4Protocol {
             &self,
             &io_token,
         ).to_result().expect("Failed to transmit");
-        match str::from_utf8(&data) {
-            Ok(v) => {
-                info!("TX {v}");
-            },
-            Err(_e) => {
-                info!("Transmit data (no decode) {data:?}");
-            }
-        };
         event.wait();
     }
 }
