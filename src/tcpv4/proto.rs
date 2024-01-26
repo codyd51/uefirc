@@ -1,8 +1,9 @@
 use alloc::rc::Rc;
 use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use core::cell::RefCell;
 use log::info;
-use uefi::{Handle, Status, StatusExt};
+use uefi::{Event, Handle, Status, StatusExt};
 use uefi::prelude::BootServices;
 use crate::event::ManagedEvent;
 use crate::ipv4::{IPv4Address, IPv4ModeData};
@@ -13,6 +14,7 @@ use crate::tcpv4::definitions::{TCPv4CompletionToken, TCPv4ConfigData, TCPv4Conn
 use uefi::Error;
 use crate::tcpv4::receive_data::TCPv4ReceiveDataHandle;
 use core::str;
+use uefi::table::boot::{EventType, TimerTrigger};
 
 #[derive(Debug)]
 #[repr(C)]
@@ -71,7 +73,7 @@ pub struct TCPv4Protocol {
         token: &TCPv4IoToken,
     ) -> Status,
 
-    receive_fn: extern "efiapi" fn(
+    pub receive_fn: extern "efiapi" fn(
         this: &Self,
         token: &TCPv4IoToken,
     ) -> Status,
@@ -157,44 +159,40 @@ impl TCPv4Protocol {
     pub fn connect(
         &mut self,
         bs: &'static BootServices,
-        _lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>,
     ) {
-        let event = ManagedEvent::new(bs, |e| {
-        });
-        //lifecycle.borrow_mut().register_started_connecting();
+        let event = ManagedEvent::new(
+            bs,
+            EventType::NOTIFY_WAIT,
+            |_| {},
+        );
         let completion_token = TCPv4CompletionToken::new(&event);
         (self.connect_fn)(
             &self,
             &completion_token,
         ).to_result().expect("Failed to call Connect()");
-        //info!("Looping...");
-        info!("Waiting...");
         event.wait();
-        info!("Finished waiting!");
-        let event_status = unsafe { bs.check_event(event.event.unsafe_clone()).unwrap()};
-        info!("Event status after wait(): {event_status:?}");
     }
 
     pub fn transmit(
         &mut self,
         bs: &'static BootServices,
-        lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>,
         data: &[u8],
     ) {
-        let _lifecycle_clone = Rc::clone(&lifecycle);
-        let event = ManagedEvent::new(bs, move |_e| {
+        let event = ManagedEvent::new(
+            bs,
+            EventType::NOTIFY_WAIT,
+            move |_e| {
+            info!("This should not be called. Callback: Transmit complete!");
             //lifecycle_clone.borrow_mut().register_transmitting_complete();
         });
-        lifecycle.borrow_mut().register_started_transmitting();
 
         let tx_data_handle = TCPv4TransmitDataHandle::new(data);
         let tx_data = tx_data_handle.get_data_ref();
         let io_token = TCPv4IoToken::new(&event, Some(&tx_data), None);
-        let result = (self.transmit_fn)(
+        (self.transmit_fn)(
             &self,
             &io_token,
-        );
-        result.to_result().expect("Failed to run transmit function");
+        ).to_result().expect("Failed to transmit");
         match str::from_utf8(&data) {
             Ok(v) => {
                 info!("TX {v}");
@@ -204,44 +202,5 @@ impl TCPv4Protocol {
             }
         };
         event.wait();
-    }
-
-    pub fn receive(
-        &mut self,
-        bs: &'static BootServices,
-        _lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>,
-    ) {
-        //let lifecycle_clone = Rc::clone(&lifecycle);
-        let event = ManagedEvent::new(bs, move |_e| {
-            //info!("Callback: Receive complete! {e:?}");
-            //lifecycle_clone.borrow_mut().register_transmitting_complete();
-        });
-        //lifecycle.borrow_mut().register_started_transmitting();
-
-        let rx_data_handle = TCPv4ReceiveDataHandle::new();
-        let rx_data = rx_data_handle.get_data_ref();
-        let io_token = TCPv4IoToken::new(&event, None, Some(&rx_data));
-        //info!("io token {io_token:?}");
-        let result = (self.receive_fn)(
-            &self,
-            &io_token,
-        );
-        //info!("Receive return value: {result:?}");
-        result.to_result().expect("Failed to run receive function");
-        event.wait();
-        let data = rx_data.read_buffers();
-        /*
-        info!("Recv data {data:?}");
-        info!("IO token {io_token:?}");
-         */
-        match str::from_utf8(&data) {
-            Ok(v) => {
-                //info!("Received data: {v}");
-                info!("RX {v}");
-            },
-            Err(_e) => {
-                info!("Received data (no decode) {data:?}");
-            }
-        };
     }
 }
