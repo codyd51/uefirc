@@ -1,22 +1,24 @@
 use alloc::boxed::Box;
+use alloc::vec::Vec;
 use core::ffi::c_void;
 use uefi::Event;
 use uefi::prelude::BootServices;
 use uefi::table::boot::{EventType, Tpl};
 use core::ptr::NonNull;
+use log::info;
 
-pub struct ManagedEvent<'a> {
+pub struct ManagedEvent {
     pub event: Event,
     boxed_closure: *mut (dyn FnMut(Event) + 'static),
-    boot_services: &'a BootServices,
+    boot_services: &'static BootServices,
 }
 
 /// Higher level modelling on top of the thin wrapper that uefi-rs provides.
 /// The wrapper as-is can't be used because the wrapper can be cheaply cloned and passed around,
 /// whereas we need there to be a single instance per event (so the destructor only runs once).
-impl<'a> ManagedEvent<'a> {
+impl ManagedEvent {
     pub fn new<F>(
-        bs: &'a BootServices,
+        bs: &'static BootServices,
         callback: F,
     ) -> Self
     where
@@ -47,7 +49,7 @@ impl<'a> ManagedEvent<'a> {
     }
 }
 
-impl Drop for ManagedEvent<'_> {
+impl Drop for ManagedEvent {
     fn drop(&mut self) {
         //info!("Dropping ManagedEvent");
         unsafe {

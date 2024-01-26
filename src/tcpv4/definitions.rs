@@ -128,7 +128,7 @@ pub struct TCPv4IoToken<'a> {
 
 impl<'a> TCPv4IoToken<'a> {
     pub fn new(
-        event: &ManagedEvent<'a>,
+        event: &ManagedEvent,
         tx: Option<&'a TCPv4TransmitData>,
         rx: Option<&'a TCPv4ReceiveData>,
     ) -> Self {
