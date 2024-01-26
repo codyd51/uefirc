@@ -21,8 +21,7 @@ impl<'a> ManagedEvent<'a> {
     ) -> Self
     where
         F: FnMut(Event) + 'static {
-        let boxed_closure = Box::new(callback) as Box<dyn FnMut(Event) + 'static>;
-        let boxed_closure = Box::into_raw(boxed_closure);
+        let boxed_closure = Box::into_raw(Box::new(callback));
         unsafe {
             let event = bs.create_event(
                 EventType::NOTIFY_WAIT,
@@ -30,7 +29,6 @@ impl<'a> ManagedEvent<'a> {
                 Some(call_closure::<F>),
                 Some(NonNull::new(boxed_closure as *mut _ as *mut c_void).unwrap()),
             ).expect("Failed to create event");
-
             Self {
                 event,
                 boxed_closure,
@@ -66,9 +64,7 @@ impl Drop for ManagedEvent<'_> {
 unsafe extern "efiapi" fn call_closure<F>(
     event: Event,
     raw_context: Option<NonNull<c_void>>,
-)
-    where
-        F: FnMut(Event) + 'static {
+) where F: FnMut(Event) + 'static {
     let unwrapped_context = cast_ctx(raw_context);
     let callback_ptr = unwrapped_context as *mut F;
     let callback = &mut *callback_ptr;
@@ -77,7 +73,7 @@ unsafe extern "efiapi" fn call_closure<F>(
     // the closure might be invoked again.
 }
 
-unsafe fn cast_ctx<T>(raw_val: Option<core::ptr::NonNull<c_void>>) -> &'static mut T {
+unsafe fn cast_ctx<T>(raw_val: Option<NonNull<c_void>>) -> &'static mut T {
     let val_ptr = raw_val.unwrap().as_ptr() as *mut c_void as *mut T;
     &mut *val_ptr
 }

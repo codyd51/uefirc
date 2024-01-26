@@ -63,6 +63,9 @@ fn get_tcp_protocol<'a>(
 fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     uefi_services::init(&mut system_table).unwrap();
     let bs = system_table.boot_services();
+    let bs: &'static BootServices = unsafe {
+        core::mem::transmute(bs)
+    };
 
     let tcp_service_binding = get_tcp_service_binding_protocol(bs);
     let mut tcp = get_tcp_protocol(bs, &tcp_service_binding);

@@ -156,31 +156,34 @@ impl TCPv4Protocol {
 
     pub fn connect(
         &mut self,
-        bs: &BootServices,
-        lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>,
+        bs: &'static BootServices,
+        _lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>,
     ) {
-        let lifecycle_clone = Rc::clone(&lifecycle);
-        let event = ManagedEvent::new(bs, move |_e| {
-            lifecycle_clone.borrow_mut().register_connecting_complete();
+        let event = ManagedEvent::new(bs, |e| {
         });
-        lifecycle.borrow_mut().register_started_connecting();
+        //lifecycle.borrow_mut().register_started_connecting();
         let completion_token = TCPv4CompletionToken::new(&event);
         (self.connect_fn)(
             &self,
             &completion_token,
         ).to_result().expect("Failed to call Connect()");
+        //info!("Looping...");
+        info!("Waiting...");
         event.wait();
+        info!("Finished waiting!");
+        let event_status = unsafe { bs.check_event(event.event.unsafe_clone()).unwrap()};
+        info!("Event status after wait(): {event_status:?}");
     }
 
     pub fn transmit(
         &mut self,
-        bs: &BootServices,
+        bs: &'static BootServices,
         lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>,
         data: &[u8],
     ) {
-        let lifecycle_clone = Rc::clone(&lifecycle);
+        let _lifecycle_clone = Rc::clone(&lifecycle);
         let event = ManagedEvent::new(bs, move |_e| {
-            lifecycle_clone.borrow_mut().register_transmitting_complete();
+            //lifecycle_clone.borrow_mut().register_transmitting_complete();
         });
         lifecycle.borrow_mut().register_started_transmitting();
 
@@ -205,7 +208,7 @@ impl TCPv4Protocol {
 
     pub fn receive(
         &mut self,
-        bs: &BootServices,
+        bs: &'static BootServices,
         _lifecycle: &Rc<RefCell<TCPv4ConnectionLifecycleManager>>,
     ) {
         //let lifecycle_clone = Rc::clone(&lifecycle);
