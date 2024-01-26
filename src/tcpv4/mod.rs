@@ -4,7 +4,6 @@ mod proto;
 mod definitions;
 mod receive_data;
 
-pub use self::lifecycle_manager::TCPv4ConnectionLifecycleManager;
 pub use self::proto::{
     TCPv4Protocol,
     TCPv4ServiceBindingProtocol,

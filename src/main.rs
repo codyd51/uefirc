@@ -9,17 +9,14 @@ mod event;
 extern crate alloc;
 
 use core::str;
-use alloc::rc::Rc;
 use alloc::vec;
 use alloc::vec::Vec;
-use core::cell::RefCell;
 use log::info;
-use uefi::Event;
 use uefi::prelude::*;
 use uefi::table::boot::{EventType, OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol, TimerTrigger};
 use crate::event::ManagedEvent;
 use crate::ipv4::IPv4Address;
-use crate::tcpv4::{TCPv4ClientConnectionModeParams, TCPv4ConnectionLifecycleManager, TCPv4ConnectionMode, TCPv4IoToken, TCPv4Protocol, TCPv4ReceiveDataHandle, TCPv4ServiceBindingProtocol};
+use crate::tcpv4::{TCPv4ClientConnectionModeParams, TCPv4ConnectionMode, TCPv4IoToken, TCPv4Protocol, TCPv4ReceiveDataHandle, TCPv4ServiceBindingProtocol};
 
 fn get_tcp_service_binding_protocol(bs: &BootServices) -> ScopedProtocol<TCPv4ServiceBindingProtocol> {
     let tcp_service_binding_handle = bs.get_handle_for_protocol::<TCPv4ServiceBindingProtocol>().unwrap();
@@ -124,15 +121,14 @@ impl<'a> TcpConnection<'a> {
         let timer_event = ManagedEvent::new(
             bs,
             EventType::TIMER,
-            //None,
-            move |e|{
-                info!("Callback: timer");
-            }
+            // UEFI doesn't invoke callbacks for timers
+            move |_|{ info!("Should not happen: Timer callback called"); }
         );
-        unsafe {
-            let one_ms = 1_000;
-            bs.set_timer(&timer_event.event, TimerTrigger::Relative(one_ms * 100))
-        }.expect("Failed to set timer");
+        let one_ms = 1_000;
+        bs.set_timer(
+            &timer_event.event,
+            TimerTrigger::Relative(one_ms * 100)
+        ).expect("Failed to set timer");
 
         if self.active_rx.is_none() {
             let rx_event = ManagedEvent::new(
@@ -170,7 +166,7 @@ impl<'a> TcpConnection<'a> {
                     Ok(v) => {
                         info!("RX {v}");
                     },
-                    Err(e) => {
+                    Err(_) => {
                         info!("RX (no decode) {0:?}", received_data);
                     }
                 };

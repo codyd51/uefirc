@@ -1,20 +1,16 @@
-use alloc::rc::Rc;
 use alloc::string::{String, ToString};
-use alloc::vec::Vec;
-use core::cell::RefCell;
 use log::info;
-use uefi::{Event, Handle, Status, StatusExt};
+use uefi::{Handle, Status, StatusExt};
 use uefi::prelude::BootServices;
 use crate::event::ManagedEvent;
 use crate::ipv4::{IPv4Address, IPv4ModeData};
-use crate::tcpv4::{TCPv4ConnectionLifecycleManager, TCPv4ConnectionMode};
+use crate::tcpv4::TCPv4ConnectionMode;
 use crate::tcpv4::transmit_data::TCPv4TransmitDataHandle;
 use uefi::proto::unsafe_protocol;
 use crate::tcpv4::definitions::{TCPv4CompletionToken, TCPv4ConfigData, TCPv4ConnectionState, TCPv4IoToken, UnmodelledPointer};
 use uefi::Error;
-use crate::tcpv4::receive_data::TCPv4ReceiveDataHandle;
 use core::str;
-use uefi::table::boot::{EventType, TimerTrigger};
+use uefi::table::boot::EventType;
 
 #[derive(Debug)]
 #[repr(C)]
@@ -181,10 +177,7 @@ impl TCPv4Protocol {
         let event = ManagedEvent::new(
             bs,
             EventType::NOTIFY_WAIT,
-            move |_e| {
-            info!("This should not be called. Callback: Transmit complete!");
-            //lifecycle_clone.borrow_mut().register_transmitting_complete();
-        });
+            move |_| {});
 
         let tx_data_handle = TCPv4TransmitDataHandle::new(data);
         let tx_data = tx_data_handle.get_data_ref();

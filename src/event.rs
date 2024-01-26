@@ -5,7 +5,6 @@ use uefi::Event;
 use uefi::prelude::BootServices;
 use uefi::table::boot::{EventType, Tpl};
 use core::ptr::NonNull;
-use log::info;
 
 pub struct ManagedEvent {
     pub event: Event,
