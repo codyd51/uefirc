@@ -19,6 +19,7 @@ pub struct ManagedEvent {
 impl ManagedEvent {
     pub fn new<F>(
         bs: &'static BootServices,
+        event_type: EventType,
         callback: F,
     ) -> Self
     where
@@ -26,7 +27,7 @@ impl ManagedEvent {
         let boxed_closure = Box::into_raw(Box::new(callback));
         unsafe {
             let event = bs.create_event(
-                EventType::NOTIFY_WAIT,
+                event_type,
                 Tpl::CALLBACK,
                 Some(call_closure::<F>),
                 Some(NonNull::new(boxed_closure as *mut _ as *mut c_void).unwrap()),
