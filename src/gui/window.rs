@@ -359,21 +359,24 @@ pub struct Screen<'a> {
     layer: RefCell<Option<PixelLayer>>,
     size: RefCell<Size>,
     graphics_protocol: RefCell<ScopedProtocol<'a, GraphicsOutput>>,
-    font: Font,
+    font_regular: Font,
+    font_italic: Font,
 }
 
 impl<'a> Screen<'a> {
     pub fn new(
         size: Size,
         graphics_protocol: ScopedProtocol<'a, GraphicsOutput>,
-        font: Font,
+        font_regular: Font,
+        font_italic: Font,
     ) -> Rc<Self> {
         Rc::new(
             Self {
                 layer: RefCell::new(None),
                 size: RefCell::new(size),
                 graphics_protocol: RefCell::new(graphics_protocol),
-                font,
+                font_regular,
+                font_italic,
             }
         )
     }

@@ -30,19 +30,23 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     let bs: &'static BootServices = unsafe {
         core::mem::transmute(bs)
     };
-    let font_data = read_file(bs, "EFI\\Boot\\sf_pro.ttf");
+
+    info!("Parsing fonts...");
+    let font_regular = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\sf_pro.ttf"));
+    let font_italic = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\new_york_italic.ttf"));
+    info!("All done!");
+
     let resolution = Size::new(1920, 1080);
     let graphics_protocol = set_resolution(
         bs,
         resolution,
     ).unwrap();
 
-    let font = ttf_renderer::parse(&font_data);
-
     let screen = Screen::new(
         resolution,
         graphics_protocol,
-        font,
+        font_regular,
+        font_italic,
     );
     screen.enter_event_loop();
 
