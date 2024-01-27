@@ -6,18 +6,18 @@ use uefi::prelude::BootServices;
 use uefi::table::boot::{EventType, Tpl};
 use core::ptr::NonNull;
 
-pub struct ManagedEvent {
+pub struct ManagedEvent<'a> {
     pub event: Event,
     boxed_closure: *mut (dyn FnMut(Event) + 'static),
-    boot_services: &'static BootServices,
+    boot_services: &'a BootServices,
 }
 
 /// Higher level modelling on top of the thin wrapper that uefi-rs provides.
 /// The wrapper as-is can't be used because the wrapper can be cheaply cloned and passed around,
 /// whereas we need there to be a single instance per event (so the destructor only runs once).
-impl ManagedEvent {
+impl<'a> ManagedEvent<'a> {
     pub fn new<F>(
-        bs: &'static BootServices,
+        bs: &'a BootServices,
         event_type: EventType,
         callback: F,
     ) -> Self
@@ -58,7 +58,7 @@ impl ManagedEvent {
     }
 }
 
-impl Drop for ManagedEvent {
+impl Drop for ManagedEvent<'_> {
     fn drop(&mut self) {
         //info!("Dropping ManagedEvent");
         unsafe {

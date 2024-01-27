@@ -157,7 +157,7 @@ impl TCPv4Protocol {
 
     pub fn connect(
         &mut self,
-        bs: &'static BootServices,
+        bs: &BootServices,
     ) {
         let event = ManagedEvent::new(
             bs,
@@ -174,7 +174,7 @@ impl TCPv4Protocol {
 
     pub fn transmit(
         &mut self,
-        bs: &'static BootServices,
+        bs: &BootServices,
         data: &[u8],
     ) {
         let event = ManagedEvent::new(

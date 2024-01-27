@@ -1,24 +1,69 @@
 use alloc::vec;
 use alloc::vec::Vec;
+use core::fmt::{Debug, Formatter};
 use core::str;
 use log::info;
 use uefi::prelude::BootServices;
-use uefi::StatusExt;
-use uefi::table::boot::{EventType, ScopedProtocol, TimerTrigger};
+use uefi::{Handle, StatusExt};
+use uefi::table::boot::{EventType, OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol, TimerTrigger};
 use crate::event::ManagedEvent;
 use crate::ipv4::IPv4Address;
-use crate::tcpv4::{TCPv4ClientConnectionModeParams, TCPv4ConnectionMode, TCPv4IoToken, TCPv4Protocol, TCPv4ReceiveDataHandle};
+use crate::tcpv4::{TCPv4ClientConnectionModeParams, TCPv4ConnectionMode, TCPv4IoToken, TCPv4Protocol, TCPv4ReceiveDataHandle, TCPv4ServiceBindingProtocol};
+
+pub fn get_tcp_service_binding_protocol(bs: &BootServices) -> ScopedProtocol<TCPv4ServiceBindingProtocol> {
+    let tcp_service_binding_handle = bs.get_handle_for_protocol::<TCPv4ServiceBindingProtocol>().unwrap();
+    let tcp_service_binding = unsafe {
+        bs.open_protocol::<TCPv4ServiceBindingProtocol>(
+            OpenProtocolParams {
+                handle: tcp_service_binding_handle,
+                agent: bs.image_handle(),
+                controller: None,
+            },
+            OpenProtocolAttributes::GetProtocol,
+        ).expect("Failed to open TCP service binding protocol")
+    };
+    tcp_service_binding
+}
+
+pub fn get_tcp_protocol<'a>(
+    bs: &'a BootServices,
+    tcp_service_binding_proto: &ScopedProtocol<'a, TCPv4ServiceBindingProtocol>,
+) -> ScopedProtocol<'a, TCPv4Protocol> {
+    let mut tcp_handle = core::mem::MaybeUninit::<Handle>::uninit();
+    let tcp_handle_ptr = tcp_handle.as_mut_ptr();
+    let result = unsafe {
+        (tcp_service_binding_proto.create_child)(
+            &tcp_service_binding_proto,
+            &mut *tcp_handle_ptr,
+        )
+    }.to_result();
+    result.expect("Failed to create TCP child protocol");
+    let tcp_handle = unsafe { tcp_handle.assume_init() };
+
+    let tcp_proto = unsafe {
+        bs.open_protocol::<TCPv4Protocol>(
+            OpenProtocolParams {
+                handle: tcp_handle,
+                agent: bs.image_handle(),
+                controller: None,
+            },
+            OpenProtocolAttributes::GetProtocol,
+        )
+    }.expect("Failed to open TCP protocol");
+    tcp_proto
+}
+
 
 pub struct TcpConnection<'a> {
-    boot_services: &'static BootServices,
+    boot_services: &'a BootServices,
     tcp: ScopedProtocol<'a, TCPv4Protocol>,
-    active_rx: Option<(ManagedEvent, TCPv4ReceiveDataHandle)>,
+    active_rx: Option<(ManagedEvent<'a>, TCPv4ReceiveDataHandle)>,
     recv_buffer: Vec<u8>,
 }
 
 impl<'a> TcpConnection<'a> {
     pub fn new(
-        boot_services: &'static BootServices,
+        boot_services: &'a BootServices,
         mut tcp: ScopedProtocol<'a, TCPv4Protocol>,
         remote_ip: IPv4Address,
         remote_port: u16,
@@ -110,3 +155,10 @@ impl<'a> TcpConnection<'a> {
         self.receive_with_timeout();
     }
 }
+
+impl Debug for TcpConnection<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "<TcpConnection, recv_buffer.len = {}>", self.recv_buffer.len())
+    }
+}
+
