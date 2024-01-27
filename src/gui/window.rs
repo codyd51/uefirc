@@ -6,10 +6,12 @@ use core::cell::RefCell;
 use core::cmp::max;
 use core::fmt::{Display, Formatter};
 use agx_definitions::{CHAR_HEIGHT, CHAR_WIDTH, Color, FONT8X8, LikeLayerSlice, Point, Rect, Size, StrokeThickness};
+use log::info;
 use ttf_renderer::{Font, render_glyph_onto, Codepoint};
 use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput};
 use uefi::table::boot::ScopedProtocol;
 use uefi_services::println;
+use crate::app::IrcClient;
 
 struct PixelBuffer {
     size: Size,
@@ -361,6 +363,7 @@ pub struct Screen<'a> {
     graphics_protocol: RefCell<ScopedProtocol<'a, GraphicsOutput>>,
     font_regular: Font,
     font_italic: Font,
+    irc_client: IrcClient<'a>,
 }
 
 impl<'a> Screen<'a> {
@@ -369,6 +372,7 @@ impl<'a> Screen<'a> {
         graphics_protocol: ScopedProtocol<'a, GraphicsOutput>,
         font_regular: Font,
         font_italic: Font,
+        irc_client: IrcClient<'a>,
     ) -> Rc<Self> {
         Rc::new(
             Self {
@@ -377,6 +381,7 @@ impl<'a> Screen<'a> {
                 graphics_protocol: RefCell::new(graphics_protocol),
                 font_regular,
                 font_italic,
+                irc_client,
             }
         )
     }
@@ -410,6 +415,7 @@ impl<'a> Screen<'a> {
                 font_size,
             );
             cursor = Point::new(cursor.x + (metrics.advance_width as isize), cursor.y);
+            // Spill onto the next line
             if cursor.x >= onto.frame().size.width - font_size.width {
                 cursor.y += scaled_em_size.height;
                 cursor.x = cursor_origin.x;
@@ -417,48 +423,99 @@ impl<'a> Screen<'a> {
         }
     }
 
-    pub fn enter_event_loop(self: &Rc<Self>) {
-        println!("Entering event loop...");
-
-        let mut r = 0;
-        let mut g = 0;
-        let mut b = 0;
-        loop {
-            self.layer.get_slice(self.layer.frame()).fill(Color::new(r as u8, g as u8, b as u8));
-            r = (r + 40 % 255);
-            g = (g + 80) % 255;
-            b = (b + 5) % 255;
-            self.layer.get_slice(Rect::from_parts(Point::zero(), Size::new(40, 40))).fill(Color::green());
-
-            let text_slice = self.layer.get_slice(Rect::from_parts(Point::new(100, 200), Size::new(800, 60)));
-            let mut cursor = Point::zero();
-            let font_size = Size::new(32, 32);
-            for ch in "Hello, world!".chars() {
-                text_slice.draw_char(
-                    ch,
-                    cursor,
-                    Color::red(),
-                    font_size,
-                );
-                cursor.x += font_size.width;
+    fn compute_string_layout_size(
+        msg: &str,
+        font: &Font,
+        font_size: Size,
+    ) -> Size {
+        let cursor_origin = Point::new(2, 2);
+        let mut cursor = cursor_origin;
+        let scale_x = font_size.width as f64 / (font.units_per_em as f64);
+        let scale_y = font_size.height as f64 / (font.units_per_em as f64);
+        let scaled_em_size = Size::new(
+            (font.bounding_box.size.width as f64 * scale_x) as isize,
+            (font.bounding_box.size.height as f64 * scale_y) as isize,
+        );
+        for (_, ch) in msg.chars().enumerate() {
+            let glyph = match font.glyph_for_codepoint(Codepoint::from(ch)) {
+                None => continue,
+                Some(glyph) => glyph,
+            };
+            let scaled_glyph_metrics = glyph.metrics().scale(scale_x, scale_y);
+            cursor = Point::new(cursor.x + (scaled_glyph_metrics.advance_width as isize), cursor.y);
+            // PT: NOTE: This functionality gives potentially inaccurate results depending on where the
+            // string is rendered to, because we may be forced to spill onto new lines.
+            /*
+            // Spill onto the next line
+            if cursor.x >= onto_frame_size.width - font_size.width {
+                cursor.y += scaled_em_size.height;
+                cursor.x = cursor_origin.x;
             }
-
-            let mut text_slice2 = self.layer.get_slice(Rect::from_parts(Point::new(100, 400), Size::new(1400, 200)));
-            let font_size = Size::new(64, 64);
-            Self::render_string(
-                "Hello with TrueType!",
-                &self.font_regular,
-                font_size,
-                Color::green(),
-                &mut text_slice2,
-            );
-
-            let self_clone = Rc::clone(self);
-            self_clone.draw();
+             */
         }
+        return Size::new(cursor.x + font_size.width, cursor.y + font_size.height)
     }
 
-    pub fn draw(&self) {
+    pub fn step(self: &Rc<Self>) {
+        // Draw the background
+        self.layer.get_slice(self.layer.frame()).fill(Color::white());
+
+        // Draw the 'menu bar' at the bottom
+        // Project name on left
+        let project_name_slice_size = Size::new(self.size.width, self.size.height / 20);
+        let project_name_font_size = Size::new(24, 24);
+        let mut project_name_slice = self.layer.get_slice(
+            Rect::from_parts(
+                Point::new(
+                    0,
+                    (self.size.height - project_name_slice_size.height) as _,
+                ),
+                project_name_slice_size,
+            )
+        );
+        Self::render_string(
+            "No operating system... no limits...",
+            &self.font_regular,
+            project_name_font_size,
+            Color::new(160, 40, 90),
+            &mut project_name_slice,
+        );
+        //self.layer.get_slice(self.layer.frame()).fill(Color::new(r as u8, g as u8, b as u8));
+        // Slogan on right
+        let slogan_font_size = Size::new(32, 32);
+        let slogan = "No operating system... No limits...";
+        //let slogan_len_x = slogan_font_size.width * (14 as isize);
+        let slogan_layout_size = Self::compute_string_layout_size(
+            slogan,
+            &self.font_italic,
+            slogan_font_size,
+        );
+        println!("Slogan layout size {slogan_layout_size:?}");
+        let mut slogan_slice = self.layer.get_slice(
+            Rect::from_parts(
+                Point::new(
+                    self.size.width - slogan_layout_size.width - (slogan_font_size.width * 4),
+                    project_name_slice.frame().min_y(),
+                ),
+                slogan_layout_size,
+            )
+        );
+        println!("Slogan slice frame {:?}", slogan_slice.frame());
+        /*
+        Self::render_string(
+            slogan,
+            &self.font_italic,
+            slogan_font_size,
+            Color::black(),
+            &mut slogan_slice,
+        );
+
+         */
+
+        self.render_to_display();
+    }
+
+    pub fn render_to_display(&self) {
         let pixel_buffer = self.layer.pixel_buffer.borrow_mut();
 
         let buf_as_u32 = {

@@ -13,7 +13,7 @@ _ARCH_TARGET_NAME = "x86_64-unknown-uefi"
 def run():
     run_and_check(
         [
-            "sudo",
+            #"sudo",
             "/opt/homebrew/bin/qemu-system-x86_64",
             # OVMF: Open source UEFI firmware for QEMU
             "-bios",
@@ -21,8 +21,8 @@ def run():
             "-monitor", "stdio",
             "-m", "4G",
             "-vga", "virtio",
-            "-netdev", "vmnet-shared,id=vmnet",
-            "-device", "rtl8139,netdev=vmnet",
+            #"-netdev", "vmnet-shared,id=vmnet",
+            #"-device", "rtl8139,netdev=vmnet",
             #"-drive", "format=raw,file=fat:rw:esp",
             "-debugcon", "file:debug.log",
             "-global", "isa-debugcon.iobase=0x402",

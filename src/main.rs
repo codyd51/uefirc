@@ -32,31 +32,42 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     };
 
     info!("Parsing fonts...");
-    let font_regular = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\sf_pro.ttf"));
-    let font_italic = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\new_york_italic.ttf"));
+    //let font_regular = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\sf_pro.ttf"));
+    /*
+    Nice:
+    Bodoni
+    DIN
+    BigCaslon
+    Chancery
+     */
+    let font_regular = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\Bodoni.ttf"));
+    let font_italic = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\chancery.ttf"));
     info!("All done!");
 
-    let resolution = Size::new(1920, 1080);
+    //let resolution = Size::new(1920, 1080);
+    let resolution = Size::new(1360, 768);
     let graphics_protocol = set_resolution(
         bs,
         resolution,
     ).unwrap();
 
+    let irc_client = IrcClient::new(bs);
     let screen = Screen::new(
         resolution,
         graphics_protocol,
         font_regular,
         font_italic,
+        irc_client,
     );
-    screen.enter_event_loop();
+    loop {
+        screen.step();
+    }
 
     /*
-    let mut client = IrcClient::new(bs);
     loop {
         client.step();
     }
-
-     */
+    */
 
     /*
     connection.transmit(b"NICK phillip-testing\r\n");
