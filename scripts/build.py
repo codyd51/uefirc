@@ -10,7 +10,7 @@ _EFI_ROOT = _REPO_ROOT / "esp"
 _ARCH_TARGET_NAME = "x86_64-unknown-uefi"
 
 
-def run():
+def run_in_qemu():
     run_and_check(
         [
             #"sudo",
@@ -37,6 +37,14 @@ def run():
     )
 
 
+def run_hosted():
+    run_and_check(
+        [
+            "cargo", "run",
+        ]
+    )
+
+
 def compile_and_run():
     built_uefi_app_path = _REPO_ROOT / "target" / _ARCH_TARGET_NAME / "debug" / "uefirc.efi"
     staged_uefi_app_path = _EFI_ROOT / "efi" / "boot" / "bootx64.efi"
@@ -52,6 +60,8 @@ def compile_and_run():
         [
             "cargo",
             "build",
+            "--features", "run_in_uefi",
+            #"--features", "run_hosted",
             "--target",
             _ARCH_TARGET_NAME,
         ],
@@ -67,7 +77,8 @@ def compile_and_run():
     if not staged_uefi_app_path.exists():
         raise RuntimeError(f'Expected staged app to exist: {staged_uefi_app_path.as_posix()}')
 
-    run()
+    run_in_qemu()
+    # run_hosted()
 
 
 if __name__ == '__main__':
