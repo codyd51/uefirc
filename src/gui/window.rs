@@ -356,8 +356,8 @@ impl LikeLayerSlice for PixelLayer {
 }
 
 pub struct Screen<'a> {
-    layer: RefCell<Option<PixelLayer>>,
-    size: RefCell<Size>,
+    layer: PixelLayer,
+    size: Size,
     graphics_protocol: RefCell<ScopedProtocol<'a, GraphicsOutput>>,
     font_regular: Font,
     font_italic: Font,
@@ -372,8 +372,8 @@ impl<'a> Screen<'a> {
     ) -> Rc<Self> {
         Rc::new(
             Self {
-                layer: RefCell::new(None),
-                size: RefCell::new(size),
+                layer: PixelLayer::new(size),
+                size,
                 graphics_protocol: RefCell::new(graphics_protocol),
                 font_regular,
                 font_italic,
@@ -419,21 +419,18 @@ impl<'a> Screen<'a> {
 
     pub fn enter_event_loop(self: &Rc<Self>) {
         println!("Entering event loop...");
-        *self.layer.borrow_mut() = Some(PixelLayer::new(*self.size.borrow()));
 
         let mut r = 0;
         let mut g = 0;
         let mut b = 0;
         loop {
-            let maybe_layer = self.layer.borrow();
-            let layer = maybe_layer.as_ref().unwrap();
-            layer.get_slice(layer.frame()).fill(Color::new(r as u8, g as u8, b as u8));
+            self.layer.get_slice(self.layer.frame()).fill(Color::new(r as u8, g as u8, b as u8));
             r = (r + 40 % 255);
             g = (g + 80) % 255;
             b = (b + 5) % 255;
-            layer.get_slice(Rect::from_parts(Point::zero(), Size::new(40, 40))).fill(Color::green());
+            self.layer.get_slice(Rect::from_parts(Point::zero(), Size::new(40, 40))).fill(Color::green());
 
-            let text_slice = layer.get_slice(Rect::from_parts(Point::new(100, 200), Size::new(800, 60)));
+            let text_slice = self.layer.get_slice(Rect::from_parts(Point::new(100, 200), Size::new(800, 60)));
             let mut cursor = Point::zero();
             let font_size = Size::new(32, 32);
             for ch in "Hello, world!".chars() {
@@ -446,11 +443,11 @@ impl<'a> Screen<'a> {
                 cursor.x += font_size.width;
             }
 
-            let mut text_slice2 = layer.get_slice(Rect::from_parts(Point::new(100, 400), Size::new(1400, 200)));
+            let mut text_slice2 = self.layer.get_slice(Rect::from_parts(Point::new(100, 400), Size::new(1400, 200)));
             let font_size = Size::new(64, 64);
             Self::render_string(
                 "Hello with TrueType!",
-                &self.font,
+                &self.font_regular,
                 font_size,
                 Color::green(),
                 &mut text_slice2,
@@ -462,8 +459,7 @@ impl<'a> Screen<'a> {
     }
 
     pub fn draw(&self) {
-        let layer = self.layer.borrow();
-        let pixel_buffer = layer.as_ref().unwrap().pixel_buffer.borrow_mut();
+        let pixel_buffer = self.layer.pixel_buffer.borrow_mut();
 
         let buf_as_u32 = {
             let buf_as_u8 = &pixel_buffer.pixels;
@@ -485,14 +481,13 @@ impl<'a> Screen<'a> {
             ));
         }
 
-        let screen_size = *self.size.borrow();
         let mut graphics_protocol = self.graphics_protocol.borrow_mut();
         graphics_protocol.blt(
             BltOp::BufferToVideo {
                 buffer: &pixels,
                 src: BltRegion::Full,
                 dest: (0, 0),
-                dims: (screen_size.width as _, screen_size.height as _),
+                dims: (self.size.width as _, self.size.height as _),
             }
         ).expect("Failed to blit screen");
 
