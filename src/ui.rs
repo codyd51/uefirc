@@ -1,3 +1,4 @@
+use agx_definitions::Size;
 use log::info;
 use uefi::Result;
 use uefi::prelude::BootServices;
@@ -7,7 +8,7 @@ use uefi_services::println;
 
 pub fn set_resolution(
     boot_services: &BootServices,
-    desired_resolution: (usize, usize),
+    desired_resolution: Size,
 ) -> Result<ScopedProtocol<GraphicsOutput>> {
     println!("trying to get protos");
     let gop_handle = boot_services.get_handle_for_protocol::<GraphicsOutput>()?;
@@ -27,7 +28,7 @@ pub fn set_resolution(
     for mode in gop.modes(boot_services) {
         let res = mode.info().resolution();
         info!("Found supported resolution {:?}", res);
-        if res == desired_resolution {
+        if res == (desired_resolution.width as _, desired_resolution.height as _) {
             gop.set_mode(&mode).expect("Failed to set desired resolution");
             switched_to_desired_resolution = true;
             break;
