@@ -37,7 +37,6 @@ impl MainView {
             }
         );
 
-        /*
         let title = TitleView::new(
             font_regular.clone(),
             Size::new(32, 32),
@@ -53,10 +52,24 @@ impl MainView {
                     ),
                     size
                 )
+                /*
+                let size = Size::new(
+                    superview_size.width,
+                    superview_size.height / 12,
+                );
+                Rect::from_parts(
+                    Point::new(
+                        0,
+                        superview_size.height - size.height
+                    ),
+                    size
+                )
+                */
             }
         );
         Rc::clone(&_self).add_component(Rc::clone(&title) as Rc<dyn UIElement>);
-        */
+
+        /*
         let v = Rc::new(View::new(
             Color::white(),
             move |_, superview_size| {
@@ -74,6 +87,7 @@ impl MainView {
             }
         ));
         Rc::clone(&_self).add_component(Rc::clone(&v) as Rc<dyn UIElement>);
+        */
 
         _self
     }

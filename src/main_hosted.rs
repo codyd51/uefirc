@@ -13,7 +13,7 @@ use std::{error, fs};
 use crate::gui::MainView;
 
 pub fn main() -> Result<(), Box<dyn error::Error>> {
-    let window_size = Size::new(1240, 1000);
+    let window_size = Size::new(1360, 768);
     let window = Rc::new(AwmWindow::new("Hosted UEFIRC", window_size));
 
     let font_regular = ttf_renderer::parse(&std::fs::read("/Users/philliptennen/CLionProjects/uefirc/esp/EFI/Boot/BigCaslon.ttf").expect("Failed to read font file"));
