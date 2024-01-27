@@ -15,9 +15,10 @@ mod connection;
 mod ui;
 #[cfg(feature = "run_in_uefi")]
 mod app;
-mod gui;
 #[cfg(feature = "run_in_uefi")]
 mod fs;
+
+mod gui;
 
 extern crate alloc;
 
@@ -32,7 +33,7 @@ mod main_uefi;
 
 #[cfg(feature = "run_in_uefi")]
 #[entry]
-fn main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
+fn main(image_handle: Handle, system_table: SystemTable<Boot>) -> Status {
     main_uefi::main(image_handle, system_table)
 }
 

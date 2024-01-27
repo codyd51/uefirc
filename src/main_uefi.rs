@@ -49,6 +49,7 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
 
     let window = AwmWindow::new(resolution);
     let main_view = MainView::new(
+        font_regular,
         move |_v, superview_size| Rect::with_size(superview_size)
     );
     Rc::clone(&window).add_component(Rc::clone(&main_view) as Rc<dyn UIElement>);

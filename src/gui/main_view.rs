@@ -14,33 +14,71 @@ use agx_definitions::{Drawable, NestedLayerSlice};
 use libgui::ui_elements::UIElement;
 use libgui::KeyCode;
 use alloc::rc::Weak;
-use libgui_derive::{Drawable, NestedLayerSlice, UIElement};
+use libgui_derive::{Drawable, NestedLayerSlice, UIElement, Bordered};
+use crate::gui::title_view::TitleView;
 
-#[derive(Drawable, NestedLayerSlice, UIElement)]
+#[derive(Drawable, NestedLayerSlice, Bordered, UIElement)]
 pub struct MainView {
     pub view: Rc<View>,
+    font_regular: Font,
 }
 
 impl MainView {
     pub fn new<F: 'static + Fn(&View, Size) -> Rect>(
+        font_regular: Font,
         sizer: F,
     ) -> Rc<Self> {
         let view = View::new(Color::yellow(), sizer);
 
-        Rc::new(
+        let _self = Rc::new(
             Self {
                 view: Rc::new(view),
+                font_regular: font_regular.clone(),
             }
-        )
-    }
-}
+        );
 
-impl Bordered for MainView {
-    fn border_insets(&self) -> RectInsets {
-        self.view.border_insets()
+        /*
+        let title = TitleView::new(
+            font_regular.clone(),
+            Size::new(32, 32),
+            move |_, superview_size| {
+                let size = Size::new(
+                    superview_size.width,
+                    superview_size.height / 12,
+                );
+                Rect::from_parts(
+                    Point::new(
+                        0,
+                        superview_size.height - size.height
+                    ),
+                    size
+                )
+            }
+        );
+        Rc::clone(&_self).add_component(Rc::clone(&title) as Rc<dyn UIElement>);
+        */
+        let v = Rc::new(View::new(
+            Color::white(),
+            move |_, superview_size| {
+                let size = Size::new(
+                    superview_size.width,
+                    superview_size.height / 12,
+                );
+                Rect::from_parts(
+                    Point::new(
+                        0,
+                        superview_size.height - size.height
+                    ),
+                    size
+                )
+            }
+        ));
+        Rc::clone(&_self).add_component(Rc::clone(&v) as Rc<dyn UIElement>);
+
+        _self
     }
 
-    fn draw_inner_content(&self, outer_frame: Rect, onto: &mut Box<dyn LikeLayerSlice>) {
-        self.view.draw_inner_content(outer_frame, onto);
+    pub fn add_component(self: Rc<Self>, elem: Rc<dyn UIElement>) {
+        Rc::clone(&self.view).add_component(elem)
     }
 }
