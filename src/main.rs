@@ -10,13 +10,16 @@ mod connection;
 mod ui;
 mod app;
 mod gui;
+mod fs;
 
 extern crate alloc;
 
 use agx_definitions::Size;
 use log::info;
 use uefi::prelude::*;
+use uefi_services::println;
 use crate::app::IrcClient;
+use crate::fs::read_file;
 use crate::gui::Screen;
 use crate::ui::set_resolution;
 
@@ -27,16 +30,19 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     let bs: &'static BootServices = unsafe {
         core::mem::transmute(bs)
     };
-
+    let font_data = read_file(bs, "EFI\\Boot\\sf_pro.ttf");
     let resolution = Size::new(1920, 1080);
     let graphics_protocol = set_resolution(
         bs,
         resolution,
     ).unwrap();
 
+    let font = ttf_renderer::parse(&font_data);
+
     let screen = Screen::new(
         resolution,
         graphics_protocol,
+        font,
     );
     screen.enter_event_loop();
 

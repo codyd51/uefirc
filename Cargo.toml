@@ -9,4 +9,7 @@ edition = "2021"
 log = "0.4.20"
 uefi = { version = "0.26.0", features = ["alloc"] }
 uefi-services = "0.23.0"
-ttf_renderer = { git = "https://github.com/codyd51/axle", branch="paging-demo" }
+#ttf_renderer = { git = "https://github.com/codyd51/axle", branch="paging-demo" }
+ttf_renderer = { path = "/Users/philliptennen/Documents/develop/axle.nosync/rust_programs/ttf_renderer/", features = ["no_std"] }
+#agx_definitions = { git = "https://github.com/codyd51/axle", branch="paging-demo" }
+agx_definitions = { path = "/Users/philliptennen/Documents/develop/axle.nosync/rust_programs/agx_definitions/", features = ["no_std"] }

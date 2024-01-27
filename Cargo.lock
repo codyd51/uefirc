@@ -5,7 +5,6 @@ version = 3
 [[package]]
 name = "agx_definitions"
 version = "0.1.0"
-source = "git+https://github.com/codyd51/axle?branch=paging-demo#96ae8852f15ad5c0a77c621c323ba47b4a7bdc69"
 dependencies = [
  "axle_rt",
  "bresenham",
@@ -22,7 +21,6 @@ checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 [[package]]
 name = "axle_rt"
 version = "0.1.0"
-source = "git+https://github.com/codyd51/axle?branch=paging-demo#96ae8852f15ad5c0a77c621c323ba47b4a7bdc69"
 dependencies = [
  "axle_rt_derive",
  "cstr_core",
@@ -31,7 +29,6 @@ dependencies = [
 [[package]]
 name = "axle_rt_derive"
 version = "0.1.0"
-source = "git+https://github.com/codyd51/axle?branch=paging-demo#96ae8852f15ad5c0a77c621c323ba47b4a7bdc69"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -182,7 +179,6 @@ dependencies = [
 [[package]]
 name = "ttf_renderer"
 version = "0.1.0"
-source = "git+https://github.com/codyd51/axle?branch=paging-demo#96ae8852f15ad5c0a77c621c323ba47b4a7bdc69"
 dependencies = [
  "agx_definitions",
  "axle_rt",
@@ -252,6 +248,7 @@ dependencies = [
 name = "uefirc"
 version = "0.1.0"
 dependencies = [
+ "agx_definitions",
  "log",
  "ttf_renderer",
  "uefi",

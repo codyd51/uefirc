@@ -6,6 +6,7 @@ use core::cell::RefCell;
 use core::cmp::max;
 use core::fmt::{Display, Formatter};
 use agx_definitions::{CHAR_HEIGHT, CHAR_WIDTH, Color, FONT8X8, LikeLayerSlice, Point, Rect, Size, StrokeThickness};
+use ttf_renderer::{Font, render_glyph_onto, Codepoint};
 use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput};
 use uefi::table::boot::ScopedProtocol;
 use uefi_services::println;
@@ -358,20 +359,59 @@ pub struct Screen<'a> {
     layer: RefCell<Option<PixelLayer>>,
     size: RefCell<Size>,
     graphics_protocol: RefCell<ScopedProtocol<'a, GraphicsOutput>>,
+    font: Font,
 }
 
 impl<'a> Screen<'a> {
     pub fn new(
         size: Size,
         graphics_protocol: ScopedProtocol<'a, GraphicsOutput>,
+        font: Font,
     ) -> Rc<Self> {
         Rc::new(
             Self {
                 layer: RefCell::new(None),
                 size: RefCell::new(size),
                 graphics_protocol: RefCell::new(graphics_protocol),
+                font,
             }
         )
+    }
+
+    fn render_string(
+        msg: &str,
+        font: &Font,
+        font_size: Size,
+        font_color: Color,
+        onto: &mut Box<dyn LikeLayerSlice>,
+    ) {
+        let cursor_origin = Point::new(2, 2);
+        let mut cursor = cursor_origin;
+        let scale_x = font_size.width as f64 / (font.units_per_em as f64);
+        let scale_y = font_size.height as f64 / (font.units_per_em as f64);
+        let scaled_em_size = Size::new(
+            (font.bounding_box.size.width as f64 * scale_x) as isize,
+            (font.bounding_box.size.height as f64 * scale_y) as isize,
+        );
+        for (_, ch) in msg.chars().enumerate() {
+            let glyph = match font.glyph_for_codepoint(Codepoint::from(ch)) {
+                None => continue,
+                Some(glyph) => glyph,
+            };
+            let (_, metrics) = render_glyph_onto(
+                glyph,
+                font,
+                onto,
+                cursor,
+                font_color,
+                font_size,
+            );
+            cursor = Point::new(cursor.x + (metrics.advance_width as isize), cursor.y);
+            if cursor.x >= onto.frame().size.width - font_size.width {
+                cursor.y += scaled_em_size.height;
+                cursor.x = cursor_origin.x;
+            }
+        }
     }
 
     pub fn enter_event_loop(self: &Rc<Self>) {
@@ -389,6 +429,29 @@ impl<'a> Screen<'a> {
             g = (g + 80) % 255;
             b = (b + 5) % 255;
             layer.get_slice(Rect::from_parts(Point::zero(), Size::new(40, 40))).fill(Color::green());
+
+            let text_slice = layer.get_slice(Rect::from_parts(Point::new(100, 200), Size::new(800, 60)));
+            let mut cursor = Point::zero();
+            let font_size = Size::new(32, 32);
+            for ch in "Hello, world!".chars() {
+                text_slice.draw_char(
+                    ch,
+                    cursor,
+                    Color::red(),
+                    font_size,
+                );
+                cursor.x += font_size.width;
+            }
+
+            let mut text_slice2 = layer.get_slice(Rect::from_parts(Point::new(100, 400), Size::new(1400, 200)));
+            let font_size = Size::new(64, 64);
+            Self::render_string(
+                "Hello with TrueType!",
+                &self.font,
+                font_size,
+                Color::green(),
+                &mut text_slice2,
+            );
 
             let self_clone = Rc::clone(self);
             self_clone.draw();
@@ -413,9 +476,9 @@ impl<'a> Screen<'a> {
         for px in buf_as_u32.iter() {
             let bytes = px.to_le_bytes();
             pixels.push(BltPixel::new(
-                bytes[0],
-                bytes[1],
                 bytes[2],
+                bytes[1],
+                bytes[0],
             ));
         }
 
