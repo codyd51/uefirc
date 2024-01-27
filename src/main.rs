@@ -11,8 +11,10 @@ mod app;
 
 extern crate alloc;
 
+use log::info;
 use uefi::prelude::*;
 use crate::app::IrcClient;
+use crate::ui::set_resolution;
 
 #[entry]
 fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
@@ -22,10 +24,15 @@ fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
         core::mem::transmute(bs)
     };
 
+    let graphics_protocol = set_resolution(bs, (1920, 1080)).unwrap();
+
+    /*
     let mut client = IrcClient::new(bs);
     loop {
         client.step();
     }
+
+     */
 
     /*
     connection.transmit(b"NICK phillip-testing\r\n");
