@@ -17,8 +17,10 @@ pub fn main() -> Result<(), Box<dyn error::Error>> {
     let window = Rc::new(AwmWindow::new("Hosted UEFIRC", window_size));
 
     let font_regular = ttf_renderer::parse(&std::fs::read("/Users/philliptennen/CLionProjects/uefirc/esp/EFI/Boot/BigCaslon.ttf").expect("Failed to read font file"));
+    let font_arial = ttf_renderer::parse(&std::fs::read("/Users/philliptennen/CLionProjects/uefirc/esp/EFI/Boot/Arial.ttf").expect("Failed to read font file"));
     let main_view = MainView::new(
         font_regular,
+        font_arial,
         move |_v, superview_size| {
             Rect::with_size(superview_size)
         }

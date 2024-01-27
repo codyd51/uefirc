@@ -1,6 +1,7 @@
 //mod window;
 mod main_view;
 mod title_view;
+mod content_view;
 
 use agx_definitions::{Rect, Size};
 use libgui::view::View;

@@ -25,15 +25,6 @@ impl TitleView {
         font_size: Size,
         sizer: F,
     ) -> Rc<Self> {
-        /*
-        let view = TextView::new_with_font(
-            Color::white(),
-            font.clone(),
-            font_size,
-            RectInsets::new(2, 2, 2, 2),
-            sizer,
-        );
-        */
         let view = Rc::new(
             View::new(
                 Color::white(),

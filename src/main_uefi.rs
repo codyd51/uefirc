@@ -37,6 +37,7 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
     Chancery
      */
     let font_regular = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\BigCaslon.ttf"));
+    let font_arial = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\Arial.ttf"));
     let font_italic = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\chancery.ttf"));
     info!("All done!");
 
@@ -50,6 +51,7 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
     let window = AwmWindow::new(resolution);
     let main_view = MainView::new(
         font_regular,
+        font_arial,
         move |_v, superview_size| Rect::with_size(superview_size)
     );
     Rc::clone(&window).add_component(Rc::clone(&main_view) as Rc<dyn UIElement>);
