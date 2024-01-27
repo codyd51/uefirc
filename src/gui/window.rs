@@ -512,9 +512,10 @@ impl<'a> Screen<'a> {
 
          */
 
-        self.render_to_display();
+        //self.render_to_display();
     }
 
+    /*
     pub fn render_to_display(&self) {
         let pixel_buffer = self.layer.pixel_buffer.borrow_mut();
 
@@ -551,4 +552,5 @@ impl<'a> Screen<'a> {
         // Don't free the memory once done as it's owned by the pixel buffer
         core::mem::forget(buf_as_u32);
     }
+    */
 }
