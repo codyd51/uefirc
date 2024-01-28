@@ -22,6 +22,7 @@ use crate::gui::title_view::TitleView;
 pub struct MainView {
     pub view: Rc<View>,
     font_regular: Font,
+    content_view: Rc<ContentView>,
 }
 
 impl MainView {
@@ -31,13 +32,6 @@ impl MainView {
         sizer: F,
     ) -> Rc<Self> {
         let view = View::new(Color::yellow(), sizer);
-
-        let _self = Rc::new(
-            Self {
-                view: Rc::new(view),
-                font_regular: font_regular.clone(),
-            }
-        );
 
         let content_sizer = |v: &View, superview_size: Size| {
             Rect::with_size(
@@ -68,13 +62,22 @@ impl MainView {
             Size::new(32, 32),
             move |v, s| title_sizer(v, s),
         );
-        Rc::clone(&_self).add_component(Rc::clone(&title) as Rc<dyn UIElement>);
 
         let content = ContentView::new(
             font_arial.clone(),
             Size::new(18, 18),
             content_sizer,
         );
+
+        let _self = Rc::new(
+            Self {
+                view: Rc::new(view),
+                font_regular: font_regular.clone(),
+                content_view: content.clone(),
+            }
+        );
+
+        Rc::clone(&_self).add_component(Rc::clone(&title) as Rc<dyn UIElement>);
         Rc::clone(&_self).add_component(Rc::clone(&content) as Rc<dyn UIElement>);
 
         _self
@@ -82,5 +85,12 @@ impl MainView {
 
     pub fn add_component(self: Rc<Self>, elem: Rc<dyn UIElement>) {
         Rc::clone(&self.view).add_component(elem)
+    }
+
+    pub fn handle_recv_data(&self, recv_data: &[u8]) {
+        let recv_as_str = core::str::from_utf8(recv_data).unwrap();
+        for ch in recv_as_str.chars() {
+            self.content_view.view.draw_char_and_update_cursor(ch, Color::black());
+        }
     }
 }

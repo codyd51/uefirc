@@ -11,7 +11,7 @@ pub struct IrcClient<'a> {
     boot_services: &'a BootServices,
     tcp_service_binding_protocol: ScopedProtocol<'a, TCPv4ServiceBindingProtocol>,
 
-    active_connection: Option<TcpConnection<'a>>,
+    pub active_connection: Option<TcpConnection<'a>>,
 }
 
 impl<'a> IrcClient<'a> {

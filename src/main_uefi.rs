@@ -3,7 +3,7 @@
 use alloc::rc::Rc;
 use alloc::vec;
 use alloc::vec::Vec;
-use agx_definitions::{Point, Rect};
+use agx_definitions::{Drawable, Point, Rect};
 #[allow(dead_code)]
 
 use agx_definitions::Size;
@@ -12,7 +12,8 @@ use libgui::text_input_view::TextInputView;
 use libgui::ui_elements::UIElement;
 use log::info;
 use uefi::prelude::*;
-use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion};
+use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput};
+use uefi::table::boot::ScopedProtocol;
 use uefi_services::println;
 use crate::app::IrcClient;
 use crate::fs::read_file;
@@ -56,46 +57,16 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
     );
     Rc::clone(&window).add_component(Rc::clone(&main_view) as Rc<dyn UIElement>);
 
+    let mut irc_client = IrcClient::new(bs);
     loop {
+        irc_client.step();
+        let mut active_connection = irc_client.active_connection.as_mut();
+        let recv_data = active_connection.unwrap().recv_buffer.drain(..).collect::<Vec<u8>>();
+        main_view.handle_recv_data(&recv_data);
         window.draw();
-        let layer = window.layer.borrow_mut();
-        let pixel_buffer = layer.framebuffer.borrow_mut();
 
-        let buf_as_u32 = {
-            let buf_as_u8 = pixel_buffer;
-            let len = buf_as_u8.len() / 4;
-            let capacity = len;
-
-            let raw_parts = buf_as_u8.as_ptr() as *mut u32;
-            let buf_as_u32 = unsafe { Vec::from_raw_parts(raw_parts, len, capacity) };
-            buf_as_u32
-        };
-
-        let mut pixels: Vec<BltPixel> = vec![];
-        for px in buf_as_u32.iter() {
-            let bytes = px.to_le_bytes();
-            pixels.push(
-                BltPixel::new(
-                    bytes[2],
-                    bytes[1],
-                    bytes[0],
-                )
-            );
-        }
-
-        graphics_protocol.blt(
-            BltOp::BufferToVideo {
-                buffer: &pixels,
-                src: BltRegion::Full,
-                dest: (0, 0),
-                dims: (resolution.width as _, resolution.height as _),
-            }
-        ).expect("Failed to blit screen");
-
-        // Don't free the memory once done as it's owned by the pixel buffer
-        core::mem::forget(buf_as_u32);
+        render_window_to_display(&window, &mut graphics_protocol);
     }
-    //let irc_client = IrcClient::new(bs);
     /*
     let screen = Screen::new(
         resolution,
@@ -125,4 +96,47 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
 
      */
     loop{}
+}
+
+fn render_window_to_display(
+    window: &AwmWindow,
+    graphics_protocol: &mut ScopedProtocol<GraphicsOutput>,
+) {
+    let layer = window.layer.borrow_mut();
+    let pixel_buffer = layer.framebuffer.borrow_mut();
+
+    let buf_as_u32 = {
+        let buf_as_u8 = pixel_buffer;
+        let len = buf_as_u8.len() / 4;
+        let capacity = len;
+
+        let raw_parts = buf_as_u8.as_ptr() as *mut u32;
+        let buf_as_u32 = unsafe { Vec::from_raw_parts(raw_parts, len, capacity) };
+        buf_as_u32
+    };
+
+    let mut pixels: Vec<BltPixel> = vec![];
+    for px in buf_as_u32.iter() {
+        let bytes = px.to_le_bytes();
+        pixels.push(
+            BltPixel::new(
+                bytes[2],
+                bytes[1],
+                bytes[0],
+            )
+        );
+    }
+
+    let resolution = window.frame().size;
+    graphics_protocol.blt(
+        BltOp::BufferToVideo {
+            buffer: &pixels,
+            src: BltRegion::Full,
+            dest: (0, 0),
+            dims: (resolution.width as _, resolution.height as _),
+        }
+    ).expect("Failed to blit screen");
+
+    // Don't free the memory once done as it's owned by the pixel buffer
+    core::mem::forget(buf_as_u32);
 }

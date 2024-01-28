@@ -58,7 +58,7 @@ pub struct TcpConnection<'a> {
     boot_services: &'a BootServices,
     tcp: ScopedProtocol<'a, TCPv4Protocol>,
     active_rx: Option<(ManagedEvent<'a>, TCPv4ReceiveDataHandle)>,
-    recv_buffer: Vec<u8>,
+    pub recv_buffer: Vec<u8>,
 }
 
 impl<'a> TcpConnection<'a> {
