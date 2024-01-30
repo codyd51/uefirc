@@ -1,21 +1,18 @@
 use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::vec::Vec;
-use core::cell::RefCell;
 use core::fmt::{Display};
 use agx_definitions::{Color, LikeLayerSlice, Point, Rect, RectInsets, Size};
 use libgui::bordered::Bordered;
-use libgui::font::load_font;
-use libgui::scroll_view::ScrollView;
-use libgui::text_view::{CursorPos, DrawnCharacter, TextView};
 use libgui::view::View;
-use ttf_renderer::{Font, render_glyph_onto, Codepoint};
+use ttf_renderer::{Font};
 use agx_definitions::{Drawable, NestedLayerSlice};
 use libgui::ui_elements::UIElement;
 use libgui::KeyCode;
 use alloc::rc::Weak;
 use libgui_derive::{Drawable, NestedLayerSlice, UIElement, Bordered};
 use crate::gui::content_view::ContentView;
+use crate::gui::input_box_view::InputBoxView;
 use crate::gui::title_view::TitleView;
 
 #[derive(Drawable, NestedLayerSlice, Bordered, UIElement)]
@@ -23,6 +20,7 @@ pub struct MainView {
     pub view: Rc<View>,
     font_regular: Font,
     content_view: Rc<ContentView>,
+    input_box_view: Rc<InputBoxView>,
 }
 
 impl MainView {
@@ -37,13 +35,13 @@ impl MainView {
             Rect::with_size(
                 Size::new(
                     superview_size.width,
-                    (superview_size.height as f64 * 0.92) as _,
+                    (superview_size.height as f64 * 0.82) as _,
                 )
             )
         };
 
         let content_sizer_clone = content_sizer.clone();
-        let title_sizer = move |v: &View, superview_size| {
+        let input_box_sizer = move |v: &View, superview_size: Size| {
             let content_frame = content_sizer_clone(v, superview_size);
             Rect::from_parts(
                 Point::new(
@@ -52,16 +50,25 @@ impl MainView {
                 ),
                 Size::new(
                     superview_size.width,
-                    superview_size.height - content_frame.height(),
+                    (superview_size.height as f64 * 0.1) as _,
                 )
             )
         };
 
-        let title = TitleView::new(
-            font_regular.clone(),
-            Size::new(32, 32),
-            move |v, s| title_sizer(v, s),
-        );
+        let input_box_sizer_clone = input_box_sizer.clone();
+        let title_sizer = move |v: &View, superview_size| {
+            let input_box_frame = input_box_sizer_clone(v, superview_size);
+            Rect::from_parts(
+                Point::new(
+                    0,
+                    input_box_frame.max_y(),
+                ),
+                Size::new(
+                    superview_size.width,
+                    superview_size.height - input_box_frame.max_y(),
+                )
+            )
+        };
 
         let content = ContentView::new(
             font_regular.clone(),
@@ -70,16 +77,30 @@ impl MainView {
             content_sizer,
         );
 
+        let input_box = InputBoxView::new(
+            font_regular.clone(),
+            Size::new(24, 24),
+            move |v, s| input_box_sizer(v, s),
+        );
+
+        let title = TitleView::new(
+            font_regular.clone(),
+            Size::new(32, 32),
+            move |v, s| title_sizer(v, s),
+        );
+
         let _self = Rc::new(
             Self {
                 view: Rc::new(view),
                 font_regular: font_regular.clone(),
                 content_view: content.clone(),
+                input_box_view: input_box.clone(),
             }
         );
 
-        Rc::clone(&_self).add_component(Rc::clone(&title) as Rc<dyn UIElement>);
         Rc::clone(&_self).add_component(Rc::clone(&content) as Rc<dyn UIElement>);
+        Rc::clone(&_self).add_component(Rc::clone(&input_box) as Rc<dyn UIElement>);
+        Rc::clone(&_self).add_component(Rc::clone(&title) as Rc<dyn UIElement>);
 
         _self
     }

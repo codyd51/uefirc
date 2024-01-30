@@ -7,12 +7,13 @@ use agx_definitions::{Drawable, Point, Rect};
 #[allow(dead_code)]
 
 use agx_definitions::Size;
-use libgui::AwmWindow;
+use libgui::{AwmWindow, KeyCode};
 use libgui::text_input_view::TextInputView;
 use libgui::ui_elements::UIElement;
 use log::info;
 use uefi::prelude::*;
 use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput};
+use uefi::proto::console::text::Key;
 use uefi::table::boot::ScopedProtocol;
 use uefi_services::println;
 use crate::app::IrcClient;
@@ -79,6 +80,8 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
     }
     // Theory: we need to do the same careful stuff for transmit as for receive
     // To test, going to try to only set up the RX handler after doing our initial transmits
+
+    let mut currently_held_key: Option<KeyCode> = None;
     loop {
         //irc_client.step();
         let mut active_connection = irc_client.active_connection.as_mut();
@@ -89,6 +92,41 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
         //println!("Got recv data");
         window.draw();
         render_window_to_display(&window, &mut graphics_protocol);
+
+
+        let key_held_on_this_iteration = {
+            let maybe_key = system_table.stdin().read_key().expect("Failed to poll for a key");
+            match maybe_key {
+                None => None,
+                Some(key) => {
+                    let key_as_u16 = match key {
+                        Key::Special(scancode) => {
+                            scancode.0
+                        }
+                        Key::Printable(char_u16) => {
+                            char::from(char_u16) as _
+                        }
+                    };
+                    Some(KeyCode(key_as_u16 as _))
+                }
+            }
+        };
+
+        // Are we changing state in any way?
+        //println!("Got key {key_held_on_this_iteration:?}");
+        if key_held_on_this_iteration != currently_held_key {
+            // Are we switching away from a held key?
+            if currently_held_key.is_some() {
+                window.handle_key_released(currently_held_key.unwrap());
+            }
+            if key_held_on_this_iteration.is_some() {
+                // Inform the window that a new key is held
+                window.handle_key_pressed(key_held_on_this_iteration.unwrap());
+            }
+            // And update our state to track that this key is currently held
+            currently_held_key = key_held_on_this_iteration;
+        }
+
     }
     /*
     let screen = Screen::new(

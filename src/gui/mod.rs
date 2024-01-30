@@ -2,6 +2,7 @@
 mod main_view;
 mod title_view;
 mod content_view;
+mod input_box_view;
 
 use agx_definitions::{Rect, Size};
 use libgui::view::View;

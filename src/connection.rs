@@ -94,7 +94,6 @@ impl<'a> TcpConnection<'a> {
     }
 
     pub fn set_up_receive_signal_handler(self: Rc<Self>) {
-        //info!("Setting up RX signal handler...");
         // Set up a signal handler to receive data
         let clone_for_cb = Rc::clone(&self);
         let self_ptr = Rc::into_raw(clone_for_cb);
@@ -125,28 +124,6 @@ impl<'a> TcpConnection<'a> {
             Rc::clone(&self_rc).set_up_receive_signal_handler();
 
             // Allow self_rc to be dropped, as we create another clone on the next call to the outer method.
-
-            //println!("Received signal!!! {raw:p}");
-            //Rc::clone(&clone_for_cb).set_up_receive_signal_handler(bs);
-            /*
-            unsafe {
-                let self_rc = Rc::from_raw(raw as *const TcpConnection);
-                //let self_rc = Rc::from_raw(self_ptr as *const TcpConnection);
-                *self_rc.active_rx.borrow_mut() = None;
-                Rc::clone(&self_rc).set_up_receive_signal_handler();
-                // Important: Convert back into a raw pointer to avoid deallocating the Rc
-                //Rc::into_raw(self_rc);
-            }
-            */
-            /*
-            if let Some(strong_self) = weak_self.upgrade() {
-                Rc::clone(&strong_self).set_up_receive_signal_handler(bs);
-            } else {
-                // Handle the case where the TcpConnection no longer exists
-                // For example, log an error or clean up resources
-                panic!("connection disappeared?");
-            }
-             */
         };
         let rx_event = Box::new(ManagedEvent::new(
             self.boot_services,
@@ -176,87 +153,15 @@ impl<'a> TcpConnection<'a> {
             )
         };
         result.to_result().expect("Failed to set up receive handler");
-        //println!("Result {result}");
-        //info!("Returning...");
     }
 
     pub fn transmit(&self, data: &[u8]) {
         self.tcp.lock().borrow_mut().transmit(&self.boot_services, data)
     }
-
-    pub fn receive_with_timeout2(&mut self) {
-        /*
-        let bs = &self.boot_services;
-        let timer_event = ManagedEvent::new(
-            bs,
-            EventType::TIMER,
-            // UEFI doesn't invoke callbacks for timers
-            move |_|{ info!("Should not happen: Timer callback called"); }
-        );
-        let one_ms = 1_000;
-        bs.set_timer(
-            &timer_event.event,
-            TimerTrigger::Relative(one_ms * 10000)
-        ).expect("Failed to set timer");
-
-        if self.active_rx.is_none() {
-            let rx_event = ManagedEvent::new(
-                bs,
-                EventType::NOTIFY_WAIT,
-                |_| {},
-            );
-            let rx_data_handle = TCPv4ReceiveDataHandle::new();
-            let rx_data = rx_data_handle.get_data_ref();
-            let io_token = TCPv4IoToken::new(&rx_event, None, Some(&rx_data));
-            let result = (self.tcp.receive_fn)(
-                &self.tcp,
-                &io_token,
-            );
-            result.to_result().expect("Failed to initiate recv");
-            self.active_rx = Some((rx_event, rx_data_handle));
-        }
-        else {
-            // The previous iteration must have been a timeout, so the previous RX event and handle
-            // are still in progress / being held by UEFI.
-        }
-        let (rx_event, rx_data_handle) = self.active_rx.as_ref().unwrap();
-
-        let triggered_event_idx = ManagedEvent::wait_for_events(
-            bs,
-            &[rx_event, &timer_event],
-        );
-        match triggered_event_idx {
-            0 => {
-                // The 'receive' event was triggered, we have data to read!
-                let received_data = rx_data_handle.get_data_ref().read_buffers();
-                self.recv_buffer.extend_from_slice(&received_data);
-                match str::from_utf8(&received_data) {
-                    Ok(v) => {
-                        info!("RX {v}");
-                    },
-                    Err(_) => {
-                        info!("RX (no decode) {0:?}", received_data);
-                    }
-                };
-                //self.active_rx = None;
-            }
-            1 => {
-                // The timeout was triggered, no data is available now
-            }
-            _ => panic!("Unexpected index"),
-        }
-        */
-    }
-
-    pub fn step(&mut self) {
-        // Give ourselves a chance to receive data
-        //self.receive_with_timeout();
-    }
 }
 
 impl Debug for TcpConnection<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        //write!(f, "<TcpConnection, recv_buffer.len = {}>", self.recv_buffer.borrow().len())
         write!(f, "<TcpConnection>")
     }
 }
