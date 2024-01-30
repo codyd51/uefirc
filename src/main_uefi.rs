@@ -45,7 +45,7 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
     Chancery
      */
     let font_regular = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\BigCaslon.ttf"));
-    let font_arial = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\Arial.ttf"));
+    let font_arial = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\Chancery.ttf"));
     let font_italic = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\chancery.ttf"));
     info!("All done!");
 
@@ -65,13 +65,29 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
     Rc::clone(&window).add_component(Rc::clone(&main_view) as Rc<dyn UIElement>);
 
     let mut irc_client = IrcClient::new(bs);
+    {
+        irc_client.connect_to_server();
+        irc_client.set_nickname("phillip1-testing\r\nUSER phillip1-testing 0 * :phillip@axleos.com\r\n");
+        //let data = format!("/USER {nickname} 0 * :{real_name}\r\n").into_bytes();
+        //irc_client.set_user("phillip-testing", "phillip@axleos.com");
+    }
+    //Rc::clone(&conn).set_up_receive_signal_handler();
+    {
+        let conn = irc_client.active_connection.as_mut();
+        let conn = conn.unwrap();
+        Rc::clone(&conn).set_up_receive_signal_handler();
+    }
+    // Theory: we need to do the same careful stuff for transmit as for receive
+    // To test, going to try to only set up the RX handler after doing our initial transmits
     loop {
-        irc_client.step();
+        //irc_client.step();
         let mut active_connection = irc_client.active_connection.as_mut();
-        let recv_data = active_connection.unwrap().recv_buffer.drain(..).collect::<Vec<u8>>();
+        let recv_buffer = &active_connection.expect("Expected an active connection").recv_buffer;
+        let recv_data = recv_buffer.lock().borrow_mut().drain(..).collect::<Vec<u8>>();
+        //println!("Got recv data");
         main_view.handle_recv_data(&recv_data);
+        //println!("Got recv data");
         window.draw();
-
         render_window_to_display(&window, &mut graphics_protocol);
     }
     /*
