@@ -1,7 +1,7 @@
 #![no_main]
 
 use alloc::rc::Rc;
-use alloc::vec;
+use alloc::{format, vec};
 use alloc::vec::Vec;
 use agx_definitions::{Drawable, Point, Rect};
 #[allow(dead_code)]
@@ -27,6 +27,13 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
     let bs: &'static BootServices = unsafe {
         core::mem::transmute(bs)
     };
+
+    // Disable the UEFI watchdog timer as we want to run indefinitely
+    bs.set_watchdog_timer(
+        0,
+        0x1ffff,
+        None,
+    ).expect("Failed to disable watchdog timer");
 
     info!("Parsing fonts...");
     //let font_regular = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\sf_pro.ttf"));
