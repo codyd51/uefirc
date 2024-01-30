@@ -2,7 +2,7 @@ import os
 import shutil
 from pathlib import Path
 
-from scripts.build_utils import run_and_check
+from build_utils import run_and_check
 
 
 _REPO_ROOT = Path(__file__).parents[1]
@@ -13,7 +13,10 @@ _ARCH_TARGET_NAME = "x86_64-unknown-uefi"
 def run_in_qemu():
     run_and_check(
         [
-            #"sudo",
+            "arch",
+            "-arm64",
+            "sudo",
+            "-S",
             "/opt/homebrew/bin/qemu-system-x86_64",
             # OVMF: Open source UEFI firmware for QEMU
             "-bios",
@@ -21,9 +24,9 @@ def run_in_qemu():
             "-monitor", "stdio",
             "-m", "4G",
             "-vga", "virtio",
-            #"-netdev", "vmnet-shared,id=vmnet",
-            #"-device", "rtl8139,netdev=vmnet",
-            #"-drive", "format=raw,file=fat:rw:esp",
+            "-netdev", "vmnet-shared,id=vmnet",
+            "-device", "rtl8139,netdev=vmnet",
+            "-drive", "format=raw,file=fat:rw:esp",
             "-debugcon", "file:debug.log",
             "-global", "isa-debugcon.iobase=0x402",
             # Provide a VirtIO RNG peripheral

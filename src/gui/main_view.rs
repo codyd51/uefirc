@@ -64,8 +64,9 @@ impl MainView {
         );
 
         let content = ContentView::new(
-            font_arial.clone(),
-            Size::new(18, 18),
+            font_regular.clone(),
+            //Size::new(16, 16),
+            Size::new(20, 20),
             content_sizer,
         );
 
@@ -92,5 +93,11 @@ impl MainView {
         for ch in recv_as_str.chars() {
             self.content_view.view.draw_char_and_update_cursor(ch, Color::black());
         }
+        let cursor_pos = self.content_view.view.cursor_pos.borrow().1;
+        let viewport_height = self.content_view.frame().height();
+        *self.content_view.view.view.layer.scroll_offset.borrow_mut() = Point::new(
+            cursor_pos.x,
+            cursor_pos.y - viewport_height + 32,
+        );
     }
 }
