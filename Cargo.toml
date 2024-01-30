@@ -15,6 +15,7 @@ ttf_renderer = { path = "/Users/philliptennen/Documents/develop/axle.nosync/rust
 agx_definitions = { path = "/Users/philliptennen/Documents/develop/axle.nosync/rust_programs/agx_definitions/" }
 libgui = { path = "/Users/philliptennen/Documents/develop/axle.nosync/rust_programs/libgui/" }
 libgui_derive = {path = "/Users/philliptennen/Documents/develop/axle.nosync/rust_programs/libgui_derive/" }
+spin = "0.9.8"
 
 # Only enabled in run_hosted mode
 pixels = { version = "0.13.0", optional = true }
