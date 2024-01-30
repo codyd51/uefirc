@@ -5,6 +5,7 @@ use uefi::Event;
 use uefi::prelude::BootServices;
 use uefi::table::boot::{EventType, Tpl};
 use core::ptr::NonNull;
+use log::info;
 
 pub struct ManagedEvent<'a> {
     pub event: Event,
@@ -17,7 +18,7 @@ pub struct ManagedEvent<'a> {
 /// whereas we need there to be a single instance per event (so the destructor only runs once).
 impl<'a> ManagedEvent<'a> {
     pub fn new<F>(
-        bs: &'a BootServices,
+        bs: &'static BootServices,
         event_type: EventType,
         callback: F,
     ) -> Self

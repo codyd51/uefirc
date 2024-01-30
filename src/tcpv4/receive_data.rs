@@ -1,9 +1,11 @@
 use alloc::vec;
 use alloc::vec::Vec;
 use core::alloc::Layout;
+use core::marker::PhantomData;
 use core::mem;
 use core::mem::ManuallyDrop;
 use core::ptr::copy_nonoverlapping;
+use log::info;
 use crate::tcpv4::TCPv4FragmentData;
 
 /// This type is necessary because the underlying structure has a flexible array member.
@@ -13,12 +15,13 @@ use crate::tcpv4::TCPv4FragmentData;
 /// Therefore, we use a wrapper 'handle' to manage the lifecycle of the allocation manually.
 #[derive(Debug)]
 #[repr(C)]
-pub struct TCPv4ReceiveDataHandle {
+pub struct TCPv4ReceiveDataHandle<'a> {
     ptr: *const TCPv4ReceiveData,
     layout: Layout,
+    phantom: PhantomData<&'a ()>,
 }
 
-impl TCPv4ReceiveDataHandle {
+impl<'a> TCPv4ReceiveDataHandle<'a> {
     fn total_layout_size(fragment_count: usize) -> usize {
         let size_of_fragments = mem::size_of::<ManuallyDrop<TCPv4FragmentData>>() * fragment_count;
         let ret = mem::size_of::<Self>() + size_of_fragments;
@@ -27,7 +30,7 @@ impl TCPv4ReceiveDataHandle {
     }
 
     pub(crate) fn new() -> Self {
-        let buffer_len = 2048;
+        let buffer_len = 2048*16;
         let fragment = ManuallyDrop::new(TCPv4FragmentData::with_buffer_len(buffer_len));
         let layout = Layout::from_size_align(
             Self::total_layout_size(1),
@@ -49,23 +52,22 @@ impl TCPv4ReceiveDataHandle {
             Self {
                 ptr: ptr as _,
                 layout,
+                phantom: PhantomData,
             }
         }
     }
 
-    pub(crate) fn get_data_ref(&self) -> &TCPv4ReceiveData {
+    pub(crate) fn get_data_ref(&self) -> &'a TCPv4ReceiveData {
         // Safety: The reference is strictly tied to the lifetime of this handle
         unsafe { &*self.ptr }
     }
 }
 
-impl Drop for TCPv4ReceiveDataHandle {
+impl Drop for TCPv4ReceiveDataHandle<'_> {
     fn drop(&mut self) {
+        //info!("Dropping RX handle");
+        let ptr = self.ptr as *mut TCPv4ReceiveData;
         unsafe {
-            //info!("Dropping RX handle");
-
-            let ptr = self.ptr as *mut TCPv4ReceiveData;
-
             // First, drop all the fragments
             let fragment_table: *mut ManuallyDrop<TCPv4FragmentData> = (*ptr).fragment_table.as_mut_ptr();
             for i in 0..((*ptr).fragment_count as usize) {
@@ -104,5 +106,11 @@ impl TCPv4ReceiveData {
             }
         }
         out
+    }
+}
+
+impl Drop for TCPv4ReceiveData {
+    fn drop(&mut self) {
+        panic!("Should be manually dropped by TCPv4ReceiveDataHandle")
     }
 }

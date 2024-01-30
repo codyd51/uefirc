@@ -10,6 +10,7 @@ use uefi::proto::unsafe_protocol;
 use crate::tcpv4::definitions::{TCPv4CompletionToken, TCPv4ConfigData, TCPv4ConnectionState, TCPv4IoToken, UnmodelledPointer};
 use uefi::Error;
 use uefi::table::boot::EventType;
+use uefi_services::println;
 
 #[derive(Debug)]
 #[repr(C)]
@@ -157,7 +158,7 @@ impl TCPv4Protocol {
 
     pub fn connect(
         &mut self,
-        bs: &BootServices,
+        bs: &'static BootServices,
     ) {
         let event = ManagedEvent::new(
             bs,
@@ -174,13 +175,13 @@ impl TCPv4Protocol {
 
     pub fn transmit(
         &mut self,
-        bs: &BootServices,
+        bs: &'static BootServices,
         data: &[u8],
     ) {
         let event = ManagedEvent::new(
             bs,
             EventType::NOTIFY_WAIT,
-            move |_| {});
+            move |_| {println!("Transmit completed!")});
 
         let tx_data_handle = TCPv4TransmitDataHandle::new(data);
         let tx_data = tx_data_handle.get_data_ref();

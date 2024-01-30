@@ -1,14 +1,16 @@
 use alloc::format;
+use alloc::rc::Rc;
 use core::alloc::Layout;
 use core::ffi::c_void;
 use core::fmt::{Debug, Formatter};
 use core::ptr::copy_nonoverlapping;
+use log::info;
 use uefi::{Event, Status};
 use crate::event::ManagedEvent;
 
 use crate::ipv4::IPv4Address;
 use crate::tcpv4::receive_data::TCPv4ReceiveData;
-use crate::tcpv4::TCPv4TransmitData;
+use crate::tcpv4::{TCPv4ReceiveDataHandle, TCPv4TransmitData};
 
 #[derive(Debug)]
 #[repr(C)]
@@ -130,6 +132,7 @@ impl<'a> TCPv4IoToken<'a> {
     pub fn new(
         event: &ManagedEvent,
         tx: Option<&'a TCPv4TransmitData>,
+        //rx: Option<Rc<TCPv4ReceiveDataHandle<'a>>>,
         rx: Option<&'a TCPv4ReceiveData>,
     ) -> Self {
         let packet = {
@@ -137,7 +140,9 @@ impl<'a> TCPv4IoToken<'a> {
                 TCPv4Packet { tx_data: tx }
             }
             else {
-                rx.expect("Either RX or TX data handles must be provided");
+                let rx_ref = rx.as_ref();
+                rx_ref.expect("Either RX or TX data handles must be provided");
+                //TCPv4Packet { rx_data: Some(rx.unwrap().get_data_ref()) }
                 TCPv4Packet { rx_data: rx }
             }
         };
@@ -145,6 +150,12 @@ impl<'a> TCPv4IoToken<'a> {
             completion_token: TCPv4CompletionToken::new(event),
             packet,
         }
+    }
+}
+
+impl Drop for TCPv4IoToken<'_> {
+    fn drop(&mut self) {
+        //info!("Dropping IO token");
     }
 }
 

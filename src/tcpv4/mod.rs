@@ -21,4 +21,5 @@ pub use self::transmit_data::{
 
 pub use self::receive_data::{
     TCPv4ReceiveDataHandle,
+    TCPv4ReceiveData,
 };
