@@ -189,19 +189,25 @@ impl App {
     }
 
     fn handle_mouse_updates(&mut self, pointer: &mut Pointer, pointer_resolution: Point) {
-        // Handle mouse updates
+        // Process any updates from the pointer protocol
         let pointer_updates = pointer.read_state().expect("Failed to read pointer state");
         if let Some(pointer_updates) = pointer_updates {
             let rel_x = pointer_updates.relative_movement[0] as isize / pointer_resolution.x;
             let rel_y = pointer_updates.relative_movement[1] as isize /  pointer_resolution.y;
-            self.current_pointer_pos.x += rel_x;
-            self.current_pointer_pos.y += rel_y;
+            // Ensure we're using non-zero values so log2 plays nice
+            if rel_x != 0 || rel_y != 0 {
+                // 'Scale' the movement so that larger motions from the user translate to faster motions across the screen
+                let scale_factor = (rel_x.abs() + rel_y.abs()).ilog2() as isize;
+                let scaled_rel_x = rel_x * scale_factor;
+                let scaled_rel_y = rel_y * scale_factor;
+                self.current_pointer_pos.x += scaled_rel_x;
+                self.current_pointer_pos.y += scaled_rel_y;
+            }
         }
 
     }
 
-    fn draw_and_push_to_display(&self, graphics_protocol: &mut ScopedProtocol<GraphicsOutput>) {
-        self.window.draw();
+    fn draw_cursor(&self) {
         let window_slice = self.window.get_slice();
         let cursor_frame = Rect::from_parts(
             self.current_pointer_pos,
@@ -219,6 +225,16 @@ impl App {
             Color::new(20, 20, 20),
             StrokeThickness::Width(3),
         );
+    }
+
+    fn draw_and_push_to_display(&self, graphics_protocol: &mut ScopedProtocol<GraphicsOutput>) {
+        // Render the view tree
+        self.window.draw();
+
+        // Draw the cursor on top of everything else
+        self.draw_cursor();
+
+        // Push it all to the display
         self.render_window_to_display(graphics_protocol);
     }
 }
