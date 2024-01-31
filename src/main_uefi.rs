@@ -1,25 +1,21 @@
 #![no_main]
 
 use alloc::rc::Rc;
-use alloc::{format, vec};
 use alloc::vec::Vec;
-use agx_definitions::{Drawable, Point, Rect};
+use agx_definitions::{Drawable, Rect};
 #[allow(dead_code)]
 
 use agx_definitions::Size;
 use libgui::{AwmWindow, KeyCode};
-use libgui::text_input_view::TextInputView;
 use libgui::ui_elements::UIElement;
 use log::info;
 use uefi::prelude::*;
 use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput};
 use uefi::proto::console::text::Key;
 use uefi::table::boot::ScopedProtocol;
-use uefi_services::println;
 use crate::app::IrcClient;
 use crate::fs::read_file;
 use crate::gui::MainView;
-//use crate::gui::Screen;
 use crate::ui::set_resolution;
 
 pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
@@ -68,11 +64,10 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
     let mut irc_client = IrcClient::new(bs);
     {
         irc_client.connect_to_server();
-        irc_client.set_nickname("phillip1-testing\r\nUSER phillip1-testing 0 * :phillip@axleos.com\r\n");
+        irc_client.set_nickname("phillip-testing\r\nUSER phillip-testing 0 * :phillip@axleos.com\r\n");
         //let data = format!("/USER {nickname} 0 * :{real_name}\r\n").into_bytes();
         //irc_client.set_user("phillip-testing", "phillip@axleos.com");
     }
-    //Rc::clone(&conn).set_up_receive_signal_handler();
     {
         let conn = irc_client.active_connection.as_mut();
         let conn = conn.unwrap();
@@ -83,17 +78,13 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
 
     let mut currently_held_key: Option<KeyCode> = None;
     loop {
-        //irc_client.step();
+        irc_client.step();
         let mut active_connection = irc_client.active_connection.as_mut();
         let recv_buffer = &active_connection.expect("Expected an active connection").recv_buffer;
         let recv_data = recv_buffer.lock().borrow_mut().drain(..).collect::<Vec<u8>>();
         //println!("Got recv data");
         main_view.handle_recv_data(&recv_data);
         //println!("Got recv data");
-        window.draw();
-        render_window_to_display(&window, &mut graphics_protocol);
-
-
         let key_held_on_this_iteration = {
             let maybe_key = system_table.stdin().read_key().expect("Failed to poll for a key");
             match maybe_key {
@@ -127,6 +118,8 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
             currently_held_key = key_held_on_this_iteration;
         }
 
+        window.draw();
+        render_window_to_display(&window, &mut graphics_protocol);
     }
     /*
     let screen = Screen::new(
@@ -166,38 +159,28 @@ fn render_window_to_display(
     let layer = window.layer.borrow_mut();
     let pixel_buffer = layer.framebuffer.borrow_mut();
 
-    let buf_as_u32 = {
+    let buf_as_blt_pixel = unsafe {
         let buf_as_u8 = pixel_buffer;
         let len = buf_as_u8.len() / 4;
         let capacity = len;
 
-        let raw_parts = buf_as_u8.as_ptr() as *mut u32;
-        let buf_as_u32 = unsafe { Vec::from_raw_parts(raw_parts, len, capacity) };
-        buf_as_u32
+        let buf_as_blt_pixels = buf_as_u8.as_ptr() as *mut BltPixel;
+        Vec::from_raw_parts(
+            buf_as_blt_pixels,
+            len,
+            capacity,
+        )
     };
-
-    let mut pixels: Vec<BltPixel> = vec![];
-    for px in buf_as_u32.iter() {
-        let bytes = px.to_le_bytes();
-        pixels.push(
-            BltPixel::new(
-                bytes[2],
-                bytes[1],
-                bytes[0],
-            )
-        );
-    }
+    // Immediately forget our re-interpreted vector of pixel data, as it's really owned by the window
+    core::mem::forget(buf_as_blt_pixel);
 
     let resolution = window.frame().size;
     graphics_protocol.blt(
         BltOp::BufferToVideo {
-            buffer: &pixels,
+            buffer: &buf_as_blt_pixel,
             src: BltRegion::Full,
             dest: (0, 0),
             dims: (resolution.width as _, resolution.height as _),
         }
     ).expect("Failed to blit screen");
-
-    // Don't free the memory once done as it's owned by the pixel buffer
-    core::mem::forget(buf_as_u32);
 }

@@ -2,6 +2,7 @@
 #![cfg_attr(feature = "run_in_uefi", no_std)]
 #![cfg_attr(feature = "run_in_uefi", feature(start))]
 #![cfg_attr(feature = "run_in_uefi", no_main)]
+#[allow(invalid_reference_casting)]
 
 #[cfg(feature = "run_in_uefi")]
 mod tcpv4;
