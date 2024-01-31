@@ -15,8 +15,7 @@ use uefi::prelude::*;
 use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput};
 use uefi::proto::console::pointer::Pointer;
 use uefi::proto::console::text::Key;
-use uefi::table::boot::{OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol};
-use crate::app::IrcClient;
+use uefi::table::boot::ScopedProtocol;
 use crate::fs::read_file;
 use crate::gui::{ContentView, InputBoxView, TitleView};
 use crate::ui::set_resolution;
@@ -26,12 +25,16 @@ struct App {
     window: Rc<AwmWindow>,
     content_view: Rc<ContentView>,
     input_box_view: Rc<InputBoxView>,
+    currently_held_key: Option<KeyCode>,
+    current_pointer_pos: Point,
+    pointer_resolution: Point,
 }
 
 impl App {
     fn new(
         resolution: Size,
         font_regular: Font,
+        pointer_resolution: Point,
     ) -> Self {
         let window = AwmWindow::new(resolution);
         let title_sizer = |v: &View, superview_size: Size| {
@@ -96,6 +99,10 @@ impl App {
             window,
             content_view: content,
             input_box_view: input_box,
+            currently_held_key: None,
+            // Start off the mouse in the middle of the screen
+            current_pointer_pos: Point::new(resolution.mid_x(), resolution.mid_y()),
+            pointer_resolution,
         }
     }
 
@@ -110,6 +117,109 @@ impl App {
             cursor_pos.x,
             cursor_pos.y - viewport_height + 32,
         );
+    }
+
+    fn render_window_to_display(
+        &self,
+        graphics_protocol: &mut ScopedProtocol<GraphicsOutput>,
+    ) {
+        let layer = self.window.layer.borrow_mut();
+        let pixel_buffer = layer.framebuffer.borrow_mut();
+
+        let buf_as_blt_pixel = unsafe {
+            let buf_as_u8 = pixel_buffer;
+            let len = buf_as_u8.len() / 4;
+            let capacity = len;
+
+            let buf_as_blt_pixels = buf_as_u8.as_ptr() as *mut BltPixel;
+            Vec::from_raw_parts(
+                buf_as_blt_pixels,
+                len,
+                capacity,
+            )
+        };
+
+        let resolution = self.window.frame().size;
+        graphics_protocol.blt(
+            BltOp::BufferToVideo {
+                buffer: &buf_as_blt_pixel,
+                src: BltRegion::Full,
+                dest: (0, 0),
+                dims: (resolution.width as _, resolution.height as _),
+            }
+        ).expect("Failed to blit screen");
+
+        // Forget our re-interpreted vector of pixel data, as it's really owned by the window
+        core::mem::forget(buf_as_blt_pixel);
+    }
+
+    fn handle_keyboard_updates(&mut self, system_table: &mut SystemTable<Boot>) {
+        let key_held_on_this_iteration = {
+            let maybe_key = system_table.stdin().read_key().expect("Failed to poll for a key");
+            match maybe_key {
+                None => None,
+                Some(key) => {
+                    let key_as_u16 = match key {
+                        Key::Special(scancode) => {
+                            scancode.0
+                        }
+                        Key::Printable(char_u16) => {
+                            char::from(char_u16) as _
+                        }
+                    };
+                    Some(KeyCode(key_as_u16 as _))
+                }
+            }
+        };
+
+        // Are we changing state in any way?
+        //println!("Got key {key_held_on_this_iteration:?}");
+        if key_held_on_this_iteration != self.currently_held_key {
+            // Are we switching away from a held key?
+            if self.currently_held_key.is_some() {
+                self.window.handle_key_released(self.currently_held_key.unwrap());
+            }
+            if key_held_on_this_iteration.is_some() {
+                // Inform the window that a new key is held
+                self.window.handle_key_pressed(key_held_on_this_iteration.unwrap());
+            }
+            // And update our state to track that this key is currently held
+            self.currently_held_key = key_held_on_this_iteration;
+        }
+    }
+
+    fn handle_mouse_updates(&mut self, pointer: &mut Pointer, pointer_resolution: Point) {
+        // Handle mouse updates
+        let pointer_updates = pointer.read_state().expect("Failed to read pointer state");
+        if let Some(pointer_updates) = pointer_updates {
+            let rel_x = pointer_updates.relative_movement[0] as isize / pointer_resolution.x;
+            let rel_y = pointer_updates.relative_movement[1] as isize /  pointer_resolution.y;
+            self.current_pointer_pos.x += rel_x;
+            self.current_pointer_pos.y += rel_y;
+        }
+
+    }
+
+    fn draw_and_push_to_display(&self, graphics_protocol: &mut ScopedProtocol<GraphicsOutput>) {
+        self.window.draw();
+        let window_slice = self.window.get_slice();
+        let cursor_frame = Rect::from_parts(
+            self.current_pointer_pos,
+            Size::new(15, 15),
+        );
+        // Inner cursor
+        window_slice.fill_rect(
+            cursor_frame,
+            Color::new(66, 206, 245),
+            StrokeThickness::Filled,
+        );
+        // Black outline
+        window_slice.fill_rect(
+            cursor_frame,
+            Color::new(20, 20, 20),
+            StrokeThickness::Width(3),
+        );
+        self.render_window_to_display(graphics_protocol);
     }
 }
 
@@ -128,20 +238,11 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
     ).expect("Failed to disable watchdog timer");
 
     info!("Parsing fonts...");
-    //let font_regular = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\sf_pro.ttf"));
-    /*
-    Nice:
-    Bodoni
-    DIN
-    BigCaslon
-    Chancery
-     */
     let font_regular = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\BigCaslon.ttf"));
-    let font_arial = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\Chancery.ttf"));
-    let font_italic = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\chancery.ttf"));
+    //let font_arial = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\Chancery.ttf"));
+    //let font_italic = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\chancery.ttf"));
     info!("All done!");
 
-    //let resolution = Size::new(1920, 1080);
     let resolution = Size::new(1360, 768);
     let mut graphics_protocol = set_resolution(
         bs,
@@ -165,9 +266,6 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
     // Theory: we need to do the same careful stuff for transmit as for receive
     // To test, going to try to only set up the RX handler after doing our initial transmits
 
-    let app = App::new(resolution, font_regular);
-    let mut currently_held_key: Option<KeyCode> = None;
-
     let pointer_handle = bs.get_handle_for_protocol::<Pointer>().expect("Failed to find handle for Pointer protocol");
     let mut pointer = bs.open_protocol_exclusive::<Pointer>(pointer_handle).expect("failed to open proto");
     pointer.reset(false).expect("Failed to reset cursor");
@@ -177,8 +275,12 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
         pointer_resolution[0] as _,
         pointer_resolution[1] as _,
     );
-    // Start off the mouse in the middle of the screen
-    let mut current_pointer_pos = Point::new(resolution.mid_x(), resolution.mid_y());
+
+    let mut app = App::new(
+        resolution,
+        font_regular,
+        pointer_resolution,
+    );
 
     loop {
         /*
@@ -190,130 +292,9 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
         main_view.handle_recv_data(&recv_data);
         */
         //println!("Got recv data");
-        let key_held_on_this_iteration = {
-            let maybe_key = system_table.stdin().read_key().expect("Failed to poll for a key");
-            match maybe_key {
-                None => None,
-                Some(key) => {
-                    let key_as_u16 = match key {
-                        Key::Special(scancode) => {
-                            scancode.0
-                        }
-                        Key::Printable(char_u16) => {
-                            char::from(char_u16) as _
-                        }
-                    };
-                    Some(KeyCode(key_as_u16 as _))
-                }
-            }
-        };
-
-        // Are we changing state in any way?
-        //println!("Got key {key_held_on_this_iteration:?}");
-        if key_held_on_this_iteration != currently_held_key {
-            // Are we switching away from a held key?
-            if currently_held_key.is_some() {
-                app.window.handle_key_released(currently_held_key.unwrap());
-            }
-            if key_held_on_this_iteration.is_some() {
-                // Inform the window that a new key is held
-                app.window.handle_key_pressed(key_held_on_this_iteration.unwrap());
-            }
-            // And update our state to track that this key is currently held
-            currently_held_key = key_held_on_this_iteration;
-        }
-
-        // Handle mouse updates
-        let pointer_updates = pointer.read_state().expect("Failed to read pointer state");
-        if let Some(pointer_updates) = pointer_updates {
-            let rel_x = pointer_updates.relative_movement[0] as isize / pointer_resolution.x;
-            let rel_y = pointer_updates.relative_movement[1] as isize /  pointer_resolution.y;
-            current_pointer_pos.x += rel_x;
-            current_pointer_pos.y += rel_y;
-        }
-
-        app.window.draw();
-
-        let window_slice = app.window.get_slice();
-        let cursor_frame = Rect::from_parts(
-            current_pointer_pos,
-            Size::new(15, 15),
-        );
-        // Inner cursor
-        window_slice.fill_rect(
-            cursor_frame,
-            Color::new(66, 206, 245),
-            StrokeThickness::Filled,
-        );
-        // Black outline
-        window_slice.fill_rect(
-            cursor_frame,
-            Color::new(20, 20, 20),
-            StrokeThickness::Width(3),
-        );
-        render_window_to_display(&app.window, &mut graphics_protocol);
+        app.handle_keyboard_updates(&mut system_table);
+        app.handle_mouse_updates(&mut pointer, pointer_resolution);
+        app.draw_and_push_to_display(&mut graphics_protocol);
     }
-    /*
-    let screen = Screen::new(
-        resolution,
-        graphics_protocol,
-        font_regular,
-        font_italic,
-        irc_client,
-    );
-    loop {
-        screen.step();
-    }
-
-     */
-
-    /*
-    loop {
-        client.step();
-    }
-    */
-
-    /*
-    connection.transmit(b"NICK phillip-testing\r\n");
-    connection.transmit(b"USER phillip-testing O * :phillip@axleos.com\r\n");
-    loop {
-        connection.step();
-    }
-
-     */
-    loop{}
 }
 
-fn render_window_to_display(
-    window: &AwmWindow,
-    graphics_protocol: &mut ScopedProtocol<GraphicsOutput>,
-) {
-    let layer = window.layer.borrow_mut();
-    let pixel_buffer = layer.framebuffer.borrow_mut();
-
-    let buf_as_blt_pixel = unsafe {
-        let buf_as_u8 = pixel_buffer;
-        let len = buf_as_u8.len() / 4;
-        let capacity = len;
-
-        let buf_as_blt_pixels = buf_as_u8.as_ptr() as *mut BltPixel;
-        Vec::from_raw_parts(
-            buf_as_blt_pixels,
-            len,
-            capacity,
-        )
-    };
-
-    let resolution = window.frame().size;
-    graphics_protocol.blt(
-        BltOp::BufferToVideo {
-            buffer: &buf_as_blt_pixel,
-            src: BltRegion::Full,
-            dest: (0, 0),
-            dims: (resolution.width as _, resolution.height as _),
-        }
-    ).expect("Failed to blit screen");
-
-    // Forget our re-interpreted vector of pixel data, as it's really owned by the window
-    core::mem::forget(buf_as_blt_pixel);
-}
