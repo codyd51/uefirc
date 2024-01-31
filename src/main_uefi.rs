@@ -205,6 +205,8 @@ impl App {
             }
         }
 
+        // And dispatch events to our view tree
+        self.window.handle_mouse_moved(self.current_pointer_pos);
     }
 
     fn draw_cursor(&self) {
