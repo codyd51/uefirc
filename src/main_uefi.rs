@@ -2,7 +2,7 @@
 
 use alloc::rc::Rc;
 use alloc::vec::Vec;
-use agx_definitions::{Drawable, Rect};
+use agx_definitions::{Color, Drawable, NestedLayerSlice, Point, Rect, StrokeThickness};
 #[allow(dead_code)]
 
 use agx_definitions::Size;
@@ -11,8 +11,9 @@ use libgui::ui_elements::UIElement;
 use log::info;
 use uefi::prelude::*;
 use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput};
+use uefi::proto::console::pointer::Pointer;
 use uefi::proto::console::text::Key;
-use uefi::table::boot::ScopedProtocol;
+use uefi::table::boot::{OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol};
 use crate::app::IrcClient;
 use crate::fs::read_file;
 use crate::gui::MainView;
@@ -77,6 +78,19 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
     // To test, going to try to only set up the RX handler after doing our initial transmits
 
     let mut currently_held_key: Option<KeyCode> = None;
+
+    let pointer_handle = bs.get_handle_for_protocol::<Pointer>().expect("Failed to find handle for Pointer protocol");
+    let mut pointer = bs.open_protocol_exclusive::<Pointer>(pointer_handle).expect("failed to open proto");
+    pointer.reset(false).expect("Failed to reset cursor");
+
+    let pointer_resolution = pointer.mode().resolution;
+    let pointer_resolution = Point::new(
+        pointer_resolution[0] as _,
+        pointer_resolution[1] as _,
+    );
+    // Start off the mouse in the middle of the screen
+    let mut current_pointer_pos = Point::new(resolution.mid_x(), resolution.mid_y());
+
     loop {
         irc_client.step();
         let mut active_connection = irc_client.active_connection.as_mut();
@@ -118,7 +132,34 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
             currently_held_key = key_held_on_this_iteration;
         }
 
+        // Handle mouse updates
+        let pointer_updates = pointer.read_state().expect("Failed to read pointer state");
+        if let Some(pointer_updates) = pointer_updates {
+            let rel_x = pointer_updates.relative_movement[0] as isize / pointer_resolution.x;
+            let rel_y = pointer_updates.relative_movement[1] as isize /  pointer_resolution.y;
+            current_pointer_pos.x += rel_x;
+            current_pointer_pos.y += rel_y;
+        }
+
         window.draw();
+
+        let window_slice = window.get_slice();
+        let cursor_frame = Rect::from_parts(
+            current_pointer_pos,
+            Size::new(15, 15),
+        );
+        // Inner cursor
+        window_slice.fill_rect(
+            cursor_frame,
+            Color::new(66, 206, 245),
+            StrokeThickness::Filled,
+        );
+        // Black outline
+        window_slice.fill_rect(
+            cursor_frame,
+            Color::new(20, 20, 20),
+            StrokeThickness::Width(3),
+        );
         render_window_to_display(&window, &mut graphics_protocol);
     }
     /*
@@ -171,8 +212,6 @@ fn render_window_to_display(
             capacity,
         )
     };
-    // Immediately forget our re-interpreted vector of pixel data, as it's really owned by the window
-    core::mem::forget(buf_as_blt_pixel);
 
     let resolution = window.frame().size;
     graphics_protocol.blt(
@@ -183,4 +222,7 @@ fn render_window_to_display(
             dims: (resolution.width as _, resolution.height as _),
         }
     ).expect("Failed to blit screen");
+
+    // Forget our re-interpreted vector of pixel data, as it's really owned by the window
+    core::mem::forget(buf_as_blt_pixel);
 }

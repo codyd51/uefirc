@@ -32,6 +32,10 @@ def run_in_qemu():
             # Provide a VirtIO RNG peripheral
             "-device",
             "virtio-rng-pci",
+            "-device",
+            "virtio-mouse-pci",
+
+            "-usb", "-device", "usb-mouse",
             # Connect a FAT filesystem that hosts the UEFI application
             "-drive",
             f"format=raw,file=fat:rw:{_EFI_ROOT.relative_to(_REPO_ROOT).as_posix()}",
