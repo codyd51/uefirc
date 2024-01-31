@@ -8,7 +8,9 @@ use agx_definitions::{Color, Drawable, NestedLayerSlice, Point, Rect, StrokeThic
 use agx_definitions::Size;
 use libgui::{AwmWindow, KeyCode};
 use libgui::ui_elements::UIElement;
+use libgui::view::View;
 use log::info;
+use ttf_renderer::Font;
 use uefi::prelude::*;
 use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput};
 use uefi::proto::console::pointer::Pointer;
@@ -16,8 +18,100 @@ use uefi::proto::console::text::Key;
 use uefi::table::boot::{OpenProtocolAttributes, OpenProtocolParams, ScopedProtocol};
 use crate::app::IrcClient;
 use crate::fs::read_file;
-use crate::gui::MainView;
+use crate::gui::{ContentView, InputBoxView, TitleView};
 use crate::ui::set_resolution;
+
+struct App {
+    font_regular: Font,
+    window: Rc<AwmWindow>,
+    content_view: Rc<ContentView>,
+    input_box_view: Rc<InputBoxView>,
+}
+
+impl App {
+    fn new(
+        resolution: Size,
+        font_regular: Font,
+    ) -> Self {
+        let window = AwmWindow::new(resolution);
+        let title_sizer = |v: &View, superview_size: Size| {
+            Rect::with_size(
+                Size::new(
+                    superview_size.width,
+                    (superview_size.height as f64 * 0.084) as _,
+                )
+            )
+        };
+
+        let title_sizer_clone = title_sizer.clone();
+        let content_sizer = move |v: &View, superview_size: Size| {
+            let title_frame = title_sizer_clone(v, superview_size);
+            Rect::from_parts(
+                Point::new(0, title_frame.max_y()),
+                Size::new(
+                    superview_size.width,
+                    (superview_size.height as f64 * 0.82) as _,
+                )
+            )
+        };
+
+        let content_sizer_clone = content_sizer.clone();
+        let input_box_sizer = move |v: &View, superview_size: Size| {
+            let content_frame = content_sizer_clone(v, superview_size);
+            Rect::from_parts(
+                Point::new(
+                    0,
+                    content_frame.max_y(),
+                ),
+                Size::new(
+                    superview_size.width,
+                    (superview_size.height as f64 * 0.1) as _,
+                )
+            )
+        };
+
+        let content = ContentView::new(
+            font_regular.clone(),
+            Size::new(20, 20),
+            content_sizer,
+        );
+
+        let input_box = InputBoxView::new(
+            font_regular.clone(),
+            Size::new(24, 24),
+            move |v, s| input_box_sizer(v, s),
+        );
+
+        let title = TitleView::new(
+            font_regular.clone(),
+            Size::new(32, 32),
+            move |v, s| title_sizer(v, s),
+        );
+        Rc::clone(&window).add_component(Rc::clone(&title) as Rc<dyn UIElement>);
+        Rc::clone(&window).add_component(Rc::clone(&content) as Rc<dyn UIElement>);
+        Rc::clone(&window).add_component(Rc::clone(&input_box) as Rc<dyn UIElement>);
+
+        Self {
+            font_regular,
+            window,
+            content_view: content,
+            input_box_view: input_box,
+        }
+    }
+
+    pub fn handle_recv_data(&self, recv_data: &[u8]) {
+        let recv_as_str = core::str::from_utf8(recv_data).unwrap();
+        for ch in recv_as_str.chars() {
+            self.content_view.view.draw_char_and_update_cursor(ch, Color::black());
+        }
+        let cursor_pos = self.content_view.view.cursor_pos.borrow().1;
+        let viewport_height = self.content_view.frame().height();
+        *self.content_view.view.view.layer.scroll_offset.borrow_mut() = Point::new(
+            cursor_pos.x,
+            cursor_pos.y - viewport_height + 32,
+        );
+    }
+}
 
 pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     uefi_services::init(&mut system_table).unwrap();
@@ -54,14 +148,7 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
         resolution,
     ).unwrap();
 
-    let window = AwmWindow::new(resolution);
-    let main_view = MainView::new(
-        font_regular,
-        font_arial,
-        move |_v, superview_size| Rect::with_size(superview_size)
-    );
-    Rc::clone(&window).add_component(Rc::clone(&main_view) as Rc<dyn UIElement>);
-
+    /*
     let mut irc_client = IrcClient::new(bs);
     {
         irc_client.connect_to_server();
@@ -74,9 +161,11 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
         let conn = conn.unwrap();
         Rc::clone(&conn).set_up_receive_signal_handler();
     }
+    */
     // Theory: we need to do the same careful stuff for transmit as for receive
     // To test, going to try to only set up the RX handler after doing our initial transmits
 
+    let app = App::new(resolution, font_regular);
     let mut currently_held_key: Option<KeyCode> = None;
 
     let pointer_handle = bs.get_handle_for_protocol::<Pointer>().expect("Failed to find handle for Pointer protocol");
@@ -92,12 +181,14 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
     let mut current_pointer_pos = Point::new(resolution.mid_x(), resolution.mid_y());
 
     loop {
+        /*
         irc_client.step();
         let mut active_connection = irc_client.active_connection.as_mut();
         let recv_buffer = &active_connection.expect("Expected an active connection").recv_buffer;
         let recv_data = recv_buffer.lock().borrow_mut().drain(..).collect::<Vec<u8>>();
         //println!("Got recv data");
         main_view.handle_recv_data(&recv_data);
+        */
         //println!("Got recv data");
         let key_held_on_this_iteration = {
             let maybe_key = system_table.stdin().read_key().expect("Failed to poll for a key");
@@ -122,11 +213,11 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
         if key_held_on_this_iteration != currently_held_key {
             // Are we switching away from a held key?
             if currently_held_key.is_some() {
-                window.handle_key_released(currently_held_key.unwrap());
+                app.window.handle_key_released(currently_held_key.unwrap());
             }
             if key_held_on_this_iteration.is_some() {
                 // Inform the window that a new key is held
-                window.handle_key_pressed(key_held_on_this_iteration.unwrap());
+                app.window.handle_key_pressed(key_held_on_this_iteration.unwrap());
             }
             // And update our state to track that this key is currently held
             currently_held_key = key_held_on_this_iteration;
@@ -141,9 +232,9 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
             current_pointer_pos.y += rel_y;
         }
 
-        window.draw();
+        app.window.draw();
 
-        let window_slice = window.get_slice();
+        let window_slice = app.window.get_slice();
         let cursor_frame = Rect::from_parts(
             current_pointer_pos,
             Size::new(15, 15),
@@ -160,7 +251,7 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
             Color::new(20, 20, 20),
             StrokeThickness::Width(3),
         );
-        render_window_to_display(&window, &mut graphics_protocol);
+        render_window_to_display(&app.window, &mut graphics_protocol);
     }
     /*
     let screen = Screen::new(
