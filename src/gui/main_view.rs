@@ -31,8 +31,20 @@ impl MainView {
     ) -> Rc<Self> {
         let view = View::new(Color::yellow(), sizer);
 
-        let content_sizer = |v: &View, superview_size: Size| {
+        let title_sizer = |v: &View, superview_size: Size| {
             Rect::with_size(
+                Size::new(
+                    superview_size.width,
+                    (superview_size.height as f64 * 0.084) as _,
+                )
+            )
+        };
+
+        let title_sizer_clone = title_sizer.clone();
+        let content_sizer = move |v: &View, superview_size: Size| {
+            let title_frame = title_sizer_clone(v, superview_size);
+            Rect::from_parts(
+                Point::new(0, title_frame.max_y()),
                 Size::new(
                     superview_size.width,
                     (superview_size.height as f64 * 0.82) as _,
@@ -51,21 +63,6 @@ impl MainView {
                 Size::new(
                     superview_size.width,
                     (superview_size.height as f64 * 0.1) as _,
-                )
-            )
-        };
-
-        let input_box_sizer_clone = input_box_sizer.clone();
-        let title_sizer = move |v: &View, superview_size| {
-            let input_box_frame = input_box_sizer_clone(v, superview_size);
-            Rect::from_parts(
-                Point::new(
-                    0,
-                    input_box_frame.max_y(),
-                ),
-                Size::new(
-                    superview_size.width,
-                    superview_size.height - input_box_frame.max_y(),
                 )
             )
         };
@@ -98,9 +95,9 @@ impl MainView {
             }
         );
 
+        Rc::clone(&_self).add_component(Rc::clone(&title) as Rc<dyn UIElement>);
         Rc::clone(&_self).add_component(Rc::clone(&content) as Rc<dyn UIElement>);
         Rc::clone(&_self).add_component(Rc::clone(&input_box) as Rc<dyn UIElement>);
-        Rc::clone(&_self).add_component(Rc::clone(&title) as Rc<dyn UIElement>);
 
         _self
     }
