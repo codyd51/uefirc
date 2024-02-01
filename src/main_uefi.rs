@@ -10,7 +10,6 @@ use agx_definitions::Size;
 use libgui::{AwmWindow, KeyCode};
 use libgui::button::Button;
 use libgui::ui_elements::UIElement;
-use libgui::view::View;
 use log::info;
 use ttf_renderer::Font;
 use uefi::prelude::*;
@@ -31,6 +30,7 @@ struct App {
     current_pointer_pos: Point,
     cursor_size: Size,
     pointer_resolution: Point,
+    is_left_click_down: bool,
 }
 
 impl App {
@@ -114,6 +114,10 @@ impl App {
             font_regular.clone(),
             move |v, s| send_button_sizer(s),
         );
+        send_button.on_left_click(|b|{
+            info!("Button clicked!");
+        });
+
         Rc::clone(&window).add_component(Rc::clone(&title) as Rc<dyn UIElement>);
         Rc::clone(&window).add_component(Rc::clone(&content) as Rc<dyn UIElement>);
         Rc::clone(&window).add_component(Rc::clone(&input_box) as Rc<dyn UIElement>);
@@ -129,6 +133,7 @@ impl App {
             current_pointer_pos: Point::new(resolution.mid_x(), resolution.mid_y()),
             cursor_size: Size::new(15, 15),
             pointer_resolution,
+            is_left_click_down: false,
         }
     }
 
@@ -215,9 +220,11 @@ impl App {
     }
 
     fn handle_mouse_updates(&mut self, pointer: &mut Pointer, pointer_resolution: Point) {
+        let orig_mouse_position = self.current_pointer_pos;
         // Process any updates from the pointer protocol
         let pointer_updates = pointer.read_state().expect("Failed to read pointer state");
         if let Some(pointer_updates) = pointer_updates {
+            // Firstly, handle changes to the mouse position
             let rel_x = pointer_updates.relative_movement[0] as isize / pointer_resolution.x;
             let rel_y = pointer_updates.relative_movement[1] as isize /  pointer_resolution.y;
             // Ensure we're using non-zero values so log2 plays nice
@@ -229,21 +236,37 @@ impl App {
                 self.current_pointer_pos.x += scaled_rel_x;
                 self.current_pointer_pos.y += scaled_rel_y;
             }
-        }
-        // Bind the mouse to the screen resolution
-        self.current_pointer_pos.x = max(0, self.current_pointer_pos.x);
-        self.current_pointer_pos.x = min(
-            self.window.frame().size.width - self.cursor_size.width,
-            self.current_pointer_pos.x,
-        );
-        self.current_pointer_pos.y = min(
-            self.window.frame().size.height - self.cursor_size.height,
-            self.current_pointer_pos.y,
-        );
-        self.current_pointer_pos.y = max(0, self.current_pointer_pos.y);
 
-        // And dispatch events to our view tree
-        self.window.handle_mouse_moved(self.current_pointer_pos);
+            // Bind the mouse to the screen resolution
+            self.current_pointer_pos.x = max(0, self.current_pointer_pos.x);
+            self.current_pointer_pos.x = min(
+                self.window.frame().size.width - self.cursor_size.width,
+                self.current_pointer_pos.x,
+            );
+            self.current_pointer_pos.y = min(
+                self.window.frame().size.height - self.cursor_size.height,
+                self.current_pointer_pos.y,
+            );
+            self.current_pointer_pos.y = max(0, self.current_pointer_pos.y);
+
+            // Next, handle changes to the button state
+            let orig_is_left_click_down = self.is_left_click_down;
+            let is_left_click_down_now = pointer_updates.button[0];
+            if !orig_is_left_click_down && is_left_click_down_now {
+                // We just entered a left click
+                self.window.handle_mouse_left_click_down(self.current_pointer_pos);
+            }
+            else {
+                // We just exited a left click
+                self.window.handle_mouse_left_click_up(self.current_pointer_pos);
+            }
+            self.is_left_click_down = is_left_click_down_now;
+        }
+
+        // And dispatch events to our view tree, if anything changed
+        if self.current_pointer_pos != orig_mouse_position {
+            self.window.handle_mouse_moved(self.current_pointer_pos);
+        }
     }
 
     fn draw_cursor(&self) {
