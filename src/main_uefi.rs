@@ -2,6 +2,7 @@
 
 use alloc::rc::Rc;
 use alloc::vec::Vec;
+use core::cmp::{max, min};
 use agx_definitions::{Color, Drawable, NestedLayerSlice, Point, Rect, StrokeThickness};
 #[allow(dead_code)]
 
@@ -27,6 +28,7 @@ struct App {
     input_box_view: Rc<InputBoxView>,
     currently_held_key: Option<KeyCode>,
     current_pointer_pos: Point,
+    cursor_size: Size,
     pointer_resolution: Point,
 }
 
@@ -102,6 +104,7 @@ impl App {
             currently_held_key: None,
             // Start off the mouse in the middle of the screen
             current_pointer_pos: Point::new(resolution.mid_x(), resolution.mid_y()),
+            cursor_size: Size::new(15, 15),
             pointer_resolution,
         }
     }
@@ -204,6 +207,17 @@ impl App {
                 self.current_pointer_pos.y += scaled_rel_y;
             }
         }
+        // Bind the mouse to the screen resolution
+        self.current_pointer_pos.x = max(0, self.current_pointer_pos.x);
+        self.current_pointer_pos.x = min(
+            self.window.frame().size.width - self.cursor_size.width,
+            self.current_pointer_pos.x,
+        );
+        self.current_pointer_pos.y = min(
+            self.window.frame().size.height - self.cursor_size.height,
+            self.current_pointer_pos.y,
+        );
+        self.current_pointer_pos.y = max(0, self.current_pointer_pos.y);
 
         // And dispatch events to our view tree
         self.window.handle_mouse_moved(self.current_pointer_pos);
@@ -213,7 +227,7 @@ impl App {
         let window_slice = self.window.get_slice();
         let cursor_frame = Rect::from_parts(
             self.current_pointer_pos,
-            Size::new(15, 15),
+            self.cursor_size,
         );
         // Inner cursor
         window_slice.fill_rect(
