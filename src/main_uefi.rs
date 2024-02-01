@@ -8,6 +8,7 @@ use agx_definitions::{Color, Drawable, NestedLayerSlice, Point, Rect, StrokeThic
 
 use agx_definitions::Size;
 use libgui::{AwmWindow, KeyCode};
+use libgui::button::Button;
 use libgui::ui_elements::UIElement;
 use libgui::view::View;
 use log::info;
@@ -39,7 +40,7 @@ impl App {
         pointer_resolution: Point,
     ) -> Self {
         let window = AwmWindow::new(resolution);
-        let title_sizer = |v: &View, superview_size: Size| {
+        let title_sizer = |superview_size: Size| {
             Rect::with_size(
                 Size::new(
                     superview_size.width,
@@ -49,8 +50,8 @@ impl App {
         };
 
         let title_sizer_clone = title_sizer.clone();
-        let content_sizer = move |v: &View, superview_size: Size| {
-            let title_frame = title_sizer_clone(v, superview_size);
+        let content_sizer = move |superview_size: Size| {
+            let title_frame = title_sizer_clone(superview_size);
             Rect::from_parts(
                 Point::new(0, title_frame.max_y()),
                 Size::new(
@@ -61,40 +62,62 @@ impl App {
         };
 
         let content_sizer_clone = content_sizer.clone();
-        let input_box_sizer = move |v: &View, superview_size: Size| {
-            let content_frame = content_sizer_clone(v, superview_size);
+        let input_box_sizer = move |superview_size: Size| {
+            let content_frame = content_sizer_clone(superview_size);
             Rect::from_parts(
                 Point::new(
                     0,
                     content_frame.max_y(),
                 ),
                 Size::new(
-                    superview_size.width,
+                    (superview_size.width as f64 * 0.9) as _,
                     (superview_size.height as f64 * 0.1) as _,
                 )
             )
         };
 
+        let input_box_sizer_clone = input_box_sizer.clone();
+        let send_button_sizer = move |superview_size: Size| {
+            let input_box_frame = input_box_sizer_clone(superview_size);
+            Rect::from_parts(
+                Point::new(
+                    input_box_frame.max_x(),
+                    input_box_frame.min_y(),
+                ),
+                Size::new(
+                    superview_size.width - input_box_frame.width(),
+                    input_box_frame.height(),
+                )
+            )
+        };
+
+        let title = TitleView::new(
+            font_regular.clone(),
+            Size::new(32, 32),
+            move |v, s| title_sizer(s),
+        );
+
         let content = ContentView::new(
             font_regular.clone(),
             Size::new(20, 20),
-            content_sizer,
+            move |v, s| content_sizer(s),
         );
 
         let input_box = InputBoxView::new(
             font_regular.clone(),
             Size::new(24, 24),
-            move |v, s| input_box_sizer(v, s),
+            move |v, s| input_box_sizer(s),
         );
 
-        let title = TitleView::new(
+        let send_button = Button::new(
+            "Send",
             font_regular.clone(),
-            Size::new(32, 32),
-            move |v, s| title_sizer(v, s),
+            move |v, s| send_button_sizer(s),
         );
         Rc::clone(&window).add_component(Rc::clone(&title) as Rc<dyn UIElement>);
         Rc::clone(&window).add_component(Rc::clone(&content) as Rc<dyn UIElement>);
         Rc::clone(&window).add_component(Rc::clone(&input_box) as Rc<dyn UIElement>);
+        Rc::clone(&window).add_component(Rc::clone(&send_button) as Rc<dyn UIElement>);
 
         Self {
             font_regular,
