@@ -37,6 +37,14 @@ impl Tokenizer {
         self.cursor += remainder.len();
         Some(remainder)
     }
+
+    pub fn peek(&self) -> Option<char> {
+        if self.cursor == self.line.len() {
+            return None;
+        }
+        Some(self.line[self.cursor])
+    }
+
 }
 
 #[cfg(test)]
@@ -45,7 +53,7 @@ mod test {
     use crate::irc::Tokenizer;
 
     #[test]
-    fn test_tokenizer() {
+    fn test_read_to() {
         let mut t = Tokenizer::new(&"This is a test");
         assert_eq!(t.read_to(' '), Some("This".to_string()));
         assert_eq!(t.read_to(' '), Some("is".to_string()));
@@ -54,5 +62,14 @@ mod test {
         assert_eq!(t.read(), Some("test".to_string()));
         assert_eq!(t.read(), None);
     }
+
+    #[test]
+    fn test_peek() {
+        let mut t = Tokenizer::new(&"X");
+        assert_eq!(t.peek(), Some('X'));
+        assert_eq!(t.read(), Some("X".to_string()));
+        assert_eq!(t.peek(), None);
+    }
+
 }
 
