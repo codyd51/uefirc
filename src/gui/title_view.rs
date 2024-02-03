@@ -38,41 +38,37 @@ impl TitleView {
             }
         );
 
-        let title = Rc::new(
-            Label::new_with_font(
-                "UEFIRC",
-                Color::black(),
-                font.clone(),
-                Size::new(32, 32),
-                move |_v, superview_size| {
-                    Rect::from_parts(
-                        Point::new(
-                            (font_size.width as f64 * 0.5) as _,
-                            ((superview_size.height as f64 / 2.0) - (font_size.height as f64 / 1.5)) as _,
-                        ),
-                        Size::new(superview_size.width / 2, superview_size.height),
-                    )
-                }
-            )
+        let title = Label::new_with_font(
+            "UEFIRC",
+            Color::black(),
+            font.clone(),
+            Size::new(32, 32),
+            move |_v, superview_size| {
+                Rect::from_parts(
+                    Point::new(
+                        (font_size.width as f64 * 0.5) as _,
+                        ((superview_size.height as f64 / 2.0) - (font_size.height as f64 / 1.5)) as _,
+                    ),
+                    Size::new(superview_size.width / 2, superview_size.height),
+                )
+            }
         );
         Rc::clone(&_self).add_component(Rc::clone(&title) as Rc<dyn UIElement>);
 
-        let slogan = Rc::new(
-            Label::new_with_font(
-                "No operating system... No limits...",
-                Color::black(),
-                font.clone(),
-                Size::new(24, 24),
-                move |_v, superview_size| {
-                    Rect::from_parts(
-                        Point::new(
-                            (superview_size.width as f64 * 0.7) as _,
-                            ((superview_size.height as f64 / 2.0) - (font_size.height as f64 / 1.8)) as _,
-                        ),
-                        Size::new(superview_size.width / 2, superview_size.height),
-                    )
-                }
-            )
+        let slogan = Label::new_with_font(
+            "No operating system... No limits...",
+            Color::black(),
+            font.clone(),
+            Size::new(24, 24),
+            move |_v, superview_size| {
+                Rect::from_parts(
+                    Point::new(
+                        (superview_size.width as f64 * 0.74) as _,
+                        ((superview_size.height as f64 / 2.0) - (font_size.height as f64 / 1.8)) as _,
+                    ),
+                    Size::new(superview_size.width / 2, superview_size.height),
+                )
+            }
         );
         Rc::clone(&_self).add_component(Rc::clone(&slogan) as Rc<dyn UIElement>);
 
