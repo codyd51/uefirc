@@ -1,3 +1,4 @@
+use alloc::borrow::ToOwned;
 use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
@@ -74,14 +75,31 @@ impl ReplyCreatedParams {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ReplyParameters {
-    message: String,
+pub struct ReplyMyInfoParams {
+    nick: Nickname,
+    server_name: String,
+    version: String,
+    available_user_modes: String,
+    available_channel_modes: String,
+    channel_modes_with_params: Option<String>,
 }
 
-impl ReplyParameters {
-    fn new(message: &str) -> Self {
+impl ReplyMyInfoParams {
+    fn new(
+        nick: &Nickname,
+        server_name: &str,
+        version: &str,
+        available_user_modes: &str,
+        available_channel_modes: &str,
+        channels_modes_with_params: Option<&str>,
+    ) -> Self {
         Self {
-            message: message.to_string(),
+            nick: nick.clone(),
+            server_name: server_name.to_string(),
+            version: version.to_string(),
+            available_user_modes: available_user_modes.to_string(),
+            available_channel_modes: available_channel_modes.to_string(),
+            channel_modes_with_params: channels_modes_with_params.map(|s| s.to_string()),
         }
     }
 }
@@ -139,7 +157,7 @@ pub enum IrcCommand {
     ReplyWelcome(ReplyWelcomeParams),
     ReplyYourHost(ReplyYourHostParams),
     ReplyCreated(ReplyCreatedParams),
-    Reply(ReplyParameters),
+    ReplyMyInfo(ReplyMyInfoParams),
     Join(JoinParameters),
     PrivateMessage(PrivateMessageParameters),
 }
@@ -234,8 +252,22 @@ impl ResponseParser {
                 IrcCommand::ReplyCreated(ReplyCreatedParams::new(&Nickname(nick), &message))
             }
             IrcCommandName::ReplyMyInfo => {
-                let message = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a message");
-                IrcCommand::Reply(ReplyParameters::new(&message))
+                let nick = tokenizer.read_to(' ').expect("Failed to read nick");
+                let server = tokenizer.read_to(' ').expect("Failed to read server");
+                let version = tokenizer.read_to(' ').expect("Failed to read version");
+                let available_umodes = tokenizer.read_to(' ').expect("Failed to read available user modes");
+                let available_cmodes = tokenizer.read_to_any(&[" ", IRC_LINE_DELIMITER]).expect("Failed to read available channel modes");
+                let cmodes_with_params = tokenizer.read_to_any(&[" ", IRC_LINE_DELIMITER]);
+                IrcCommand::ReplyMyInfo(
+                    ReplyMyInfoParams::new(
+                        &Nickname(nick),
+                        &server,
+                        &version,
+                        &available_umodes,
+                        &available_cmodes,
+                        cmodes_with_params.as_ref().map(String::as_str),
+                    )
+                )
             }
             IrcCommandName::Join => {
                 let channel = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a channel name");
@@ -263,7 +295,7 @@ impl ResponseParser {
 mod test {
     use alloc::string::ToString;
     use crate::irc::{ResponseParser};
-    use crate::irc::response_parser::{Channel, IrcCommand, IrcCommandName, IrcMessage, JoinParameters, Nickname, ReplyCreatedParams, ReplyParameters, ReplyWelcomeParams, ReplyYourHostParams};
+    use crate::irc::response_parser::{Channel, IrcCommand, IrcCommandName, IrcMessage, JoinParameters, Nickname, ReplyCreatedParams, ReplyMyInfoParams, ReplyWelcomeParams, ReplyYourHostParams};
 
     fn parse_line(line: &str) -> IrcMessage {
         let mut p = ResponseParser::new();
@@ -290,7 +322,7 @@ mod test {
     }
 
     #[test]
-    fn test_parse_welcome_message() {
+    fn test_parse_welcome() {
         let msg = parse_line(":irc.example.com 001 phill :Welcome to the IRC Network, phill!s@localhost\r\n");
         assert_eq!(msg.origin, Some("irc.example.com".to_string()));
         assert_eq!(msg.command_name, IrcCommandName::ReplyWelcome);
@@ -306,7 +338,7 @@ mod test {
     }
 
     #[test]
-    fn test_parse_your_host_message() {
+    fn test_parse_your_host() {
         let msg = parse_line(":irc.example.com 002 phill :Your host is irc.example.com, running version fake\r\n");
         assert_eq!(msg.origin, Some("irc.example.com".to_string()));
         assert_eq!(msg.command_name, IrcCommandName::ReplyYourHost);
@@ -322,7 +354,7 @@ mod test {
     }
 
     #[test]
-    fn test_parse_created_message() {
+    fn test_parse_created() {
         let msg = parse_line(":irc.example.com 003 phill :This server was created on caffeine\r\n");
         assert_eq!(msg.origin, Some("irc.example.com".to_string()));
         assert_eq!(msg.command_name, IrcCommandName::ReplyCreated);
@@ -332,6 +364,45 @@ mod test {
                 ReplyCreatedParams::new(
                     &Nickname("phill".to_string()),
                     "This server was created on caffeine",
+                )
+            )
+        );
+    }
+
+    #[test]
+    fn test_parse_my_info() {
+        // One message that does specify the channels with parameters
+        let msg = parse_line(":copper.libera.chat 004 phillipt copper.libera.chat solanum-1.0-dev DGIMQRSZaghilopsuwz CFILMPQRSTbcefgijklmnopqrstuvz bkloveqjfI\r\n");
+        assert_eq!(msg.origin, Some("copper.libera.chat".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ReplyMyInfo);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ReplyMyInfo(
+                ReplyMyInfoParams::new(
+                    &Nickname("phillipt".to_string()),
+                    &"copper.libera.chat",
+                    &"solanum-1.0-dev",
+                    &"DGIMQRSZaghilopsuwz",
+                    &"CFILMPQRSTbcefgijklmnopqrstuvz",
+                    Some(&"bkloveqjfI"),
+                )
+            )
+        );
+
+        // And a message that doesn't specify the channels with parameters
+        let msg = parse_line(":copper.libera.chat 004 phillipt copper.libera.chat solanum-1.0-dev DGIMQRSZaghilopsuwz CFILMPQRSTbcefgijklmnopqrstuvz\r\n");
+        assert_eq!(msg.origin, Some("copper.libera.chat".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ReplyMyInfo);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ReplyMyInfo(
+                ReplyMyInfoParams::new(
+                    &Nickname("phillipt".to_string()),
+                    &"copper.libera.chat",
+                    &"solanum-1.0-dev",
+                    &"DGIMQRSZaghilopsuwz",
+                    &"CFILMPQRSTbcefgijklmnopqrstuvz",
+                    None,
                 )
             )
         );
