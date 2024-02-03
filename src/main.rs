@@ -20,6 +20,7 @@ mod app;
 mod fs;
 
 mod gui;
+mod irc;
 
 extern crate alloc;
 

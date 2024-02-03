@@ -10,7 +10,6 @@ use log::info;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::{error, fs};
-use crate::gui::MainView;
 
 pub fn main() -> Result<(), Box<dyn error::Error>> {
     let window_size = Size::new(1360, 768);
@@ -18,6 +17,7 @@ pub fn main() -> Result<(), Box<dyn error::Error>> {
 
     let font_regular = ttf_renderer::parse(&std::fs::read("/Users/philliptennen/CLionProjects/uefirc/esp/EFI/Boot/BigCaslon.ttf").expect("Failed to read font file"));
     let font_arial = ttf_renderer::parse(&std::fs::read("/Users/philliptennen/CLionProjects/uefirc/esp/EFI/Boot/Arial.ttf").expect("Failed to read font file"));
+    /*
     let main_view = MainView::new(
         font_regular,
         font_arial,
@@ -26,6 +26,8 @@ pub fn main() -> Result<(), Box<dyn error::Error>> {
         }
     );
     Rc::clone(&window).add_component(Rc::clone(&main_view) as Rc<dyn UIElement>);
+
+     */
 
     window.enter_event_loop();
     Ok(())
