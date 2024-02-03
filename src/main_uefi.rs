@@ -119,9 +119,6 @@ impl<'a> App<'a> {
             font_regular.clone(),
             move |v, s| send_button_sizer(s),
         );
-        send_button.on_left_click(|b|{
-            info!("Button clicked!");
-        });
 
         Rc::clone(&window).add_component(Rc::clone(&title) as Rc<dyn UIElement>);
         Rc::clone(&window).add_component(Rc::clone(&content) as Rc<dyn UIElement>);
@@ -143,6 +140,20 @@ impl<'a> App<'a> {
                 is_left_click_down: RefCell::new(false),
             }
         );
+
+        let self_clone_for_button_cb: Rc<App<'static>> = unsafe { core::mem::transmute(Rc::clone(&_self)) };
+        send_button.on_left_click(move |b|{
+            self_clone_for_button_cb.send_input_and_clear_input_text_box();
+        });
+
+        let self_clone_for_input_box_cb: Rc<App<'static>> = unsafe { core::mem::transmute(Rc::clone(&_self)) };
+        input_box.view.set_on_key_pressed(move |v, key_code|{
+            // PT: UEFI represents the enter key as a carriage return rather than newline
+            if key_code.0 as u8 == '\r' as u8 {
+                Rc::clone(&self_clone_for_input_box_cb).handle_enter_key_pressed();
+            }
+        });
+
         _self
     }
 
@@ -157,6 +168,21 @@ impl<'a> App<'a> {
             0,
             cursor_pos.y - viewport_height + 60,
         );
+    }
+
+    fn handle_enter_key_pressed(&self) {
+        self.send_input_and_clear_input_text_box();
+    }
+
+    fn send_input_and_clear_input_text_box(&self) {
+        let mut irc_client = self.irc_client.borrow_mut();
+        let input_view = &self.input_box_view;
+        let input_str = {
+            let input_drawn_characters = input_view.view.view.text.borrow();
+            input_drawn_characters.iter().map(|c| c.value).collect::<String>()
+        };
+        irc_client.send_message_to_user("codyd51", &input_str);
+        self.input_box_view.view.clear();
     }
 
     fn render_window_to_display(
