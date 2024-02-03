@@ -45,6 +45,13 @@ impl Tokenizer {
         Some(self.line[self.cursor])
     }
 
+    pub fn match_str(&mut self, expected: &str) {
+        let actual_str = self.line[self.cursor..self.cursor + expected.len()].iter().collect::<String>();
+        if actual_str != expected {
+            panic!("Expected \"{expected}\", but parsed \"{actual_str}\"");
+        }
+        self.cursor += expected.len();
+    }
 }
 
 #[cfg(test)]
@@ -71,5 +78,12 @@ mod test {
         assert_eq!(t.peek(), None);
     }
 
+    #[test]
+    fn test_match() {
+        let mut t = Tokenizer::new(&"This is a test");
+        t.match_str("This");
+        assert_eq!(t.peek(), Some(' '));
+        assert_eq!(t.read(), Some(" is a test".to_string()));
+    }
 }
 
