@@ -30,11 +30,11 @@ struct App<'a> {
     window: Rc<AwmWindow>,
     content_view: Rc<ContentView>,
     input_box_view: Rc<InputBoxView>,
-    currently_held_key: Option<KeyCode>,
-    current_pointer_pos: Point,
+    currently_held_key: RefCell<Option<KeyCode>>,
+    current_pointer_pos: RefCell<Point>,
     cursor_size: Size,
     pointer_resolution: Point,
-    is_left_click_down: bool,
+    is_left_click_down: RefCell<bool>,
 }
 
 impl<'a> App<'a> {
@@ -193,7 +193,7 @@ impl<'a> App<'a> {
         core::mem::forget(buf_as_blt_pixel);
     }
 
-    fn handle_keyboard_updates(&mut self, system_table: &mut SystemTable<Boot>) {
+    fn handle_keyboard_updates(&self, system_table: &mut SystemTable<Boot>) {
         let key_held_on_this_iteration = {
             let maybe_key = system_table.stdin().read_key().expect("Failed to poll for a key");
             match maybe_key {
@@ -214,22 +214,24 @@ impl<'a> App<'a> {
 
         // Are we changing state in any way?
         //println!("Got key {key_held_on_this_iteration:?}");
-        if key_held_on_this_iteration != self.currently_held_key {
+        let currently_held_key = *self.currently_held_key.borrow();
+        if key_held_on_this_iteration != currently_held_key {
             // Are we switching away from a held key?
-            if self.currently_held_key.is_some() {
-                self.window.handle_key_released(self.currently_held_key.unwrap());
+            if currently_held_key.is_some() {
+                self.window.handle_key_released(currently_held_key.unwrap());
             }
             if key_held_on_this_iteration.is_some() {
                 // Inform the window that a new key is held
                 self.window.handle_key_pressed(key_held_on_this_iteration.unwrap());
             }
             // And update our state to track that this key is currently held
-            self.currently_held_key = key_held_on_this_iteration;
+            *self.currently_held_key.borrow_mut() = key_held_on_this_iteration;
         }
     }
 
-    fn handle_mouse_updates(&mut self, pointer: &mut Pointer, pointer_resolution: Point) {
-        let orig_mouse_position = self.current_pointer_pos;
+    fn handle_mouse_updates(&self, pointer: &mut Pointer, pointer_resolution: Point) {
+        let orig_mouse_position = *self.current_pointer_pos.borrow();
+        let mut updated_current_pointer_pos = orig_mouse_position;
         // Process any updates from the pointer protocol
         let pointer_updates = pointer.read_state().expect("Failed to read pointer state");
         if let Some(pointer_updates) = pointer_updates {
@@ -242,46 +244,47 @@ impl<'a> App<'a> {
                 let scale_factor = (rel_x.abs() + rel_y.abs()).ilog2() as isize;
                 let scaled_rel_x = rel_x * scale_factor;
                 let scaled_rel_y = rel_y * scale_factor;
-                self.current_pointer_pos.x += scaled_rel_x;
-                self.current_pointer_pos.y += scaled_rel_y;
+                updated_current_pointer_pos.x += scaled_rel_x;
+                updated_current_pointer_pos.y += scaled_rel_y;
             }
 
             // Bind the mouse to the screen resolution
-            self.current_pointer_pos.x = max(0, self.current_pointer_pos.x);
-            self.current_pointer_pos.x = min(
+            updated_current_pointer_pos.x = max(0, updated_current_pointer_pos.x);
+            updated_current_pointer_pos.x = min(
                 self.window.frame().size.width - self.cursor_size.width,
-                self.current_pointer_pos.x,
+                updated_current_pointer_pos.x,
             );
-            self.current_pointer_pos.y = min(
+            updated_current_pointer_pos.y = min(
                 self.window.frame().size.height - self.cursor_size.height,
-                self.current_pointer_pos.y,
+                updated_current_pointer_pos.y,
             );
-            self.current_pointer_pos.y = max(0, self.current_pointer_pos.y);
+            updated_current_pointer_pos.y = max(0, updated_current_pointer_pos.y);
 
             // Next, handle changes to the button state
-            let orig_is_left_click_down = self.is_left_click_down;
+            let orig_is_left_click_down = *self.is_left_click_down.borrow();
             let is_left_click_down_now = pointer_updates.button[0];
             if !orig_is_left_click_down && is_left_click_down_now {
                 // We just entered a left click
-                self.window.handle_mouse_left_click_down(self.current_pointer_pos);
+                self.window.handle_mouse_left_click_down(updated_current_pointer_pos);
             }
             else {
                 // We just exited a left click
-                self.window.handle_mouse_left_click_up(self.current_pointer_pos);
+                self.window.handle_mouse_left_click_up(updated_current_pointer_pos);
             }
-            self.is_left_click_down = is_left_click_down_now;
+            *self.is_left_click_down.borrow_mut() = is_left_click_down_now;
         }
 
         // And dispatch events to our view tree, if anything changed
-        if self.current_pointer_pos != orig_mouse_position {
-            self.window.handle_mouse_moved(self.current_pointer_pos);
+        if updated_current_pointer_pos != orig_mouse_position {
+            *self.current_pointer_pos.borrow_mut() = updated_current_pointer_pos;
+            self.window.handle_mouse_moved(updated_current_pointer_pos);
         }
     }
 
     fn draw_cursor(&self) {
         let window_slice = self.window.get_slice();
         let cursor_frame = Rect::from_parts(
-            self.current_pointer_pos,
+            *self.current_pointer_pos.borrow(),
             self.cursor_size,
         );
         // Inner cursor
@@ -307,6 +310,17 @@ impl<'a> App<'a> {
 
         // Push it all to the display
         self.render_window_to_display(graphics_protocol);
+    }
+
+    // TODO(PT): To make the UI more responsive, only draw 1 line of text per refresh in the startup message?
+
+    fn step(&self) {
+        let mut irc_client = self.irc_client.borrow_mut();
+        irc_client.step();
+        let mut active_connection = irc_client.active_connection.as_mut();
+        let recv_buffer = &active_connection.expect("Expected an active connection").recv_buffer;
+        let recv_data = recv_buffer.lock().borrow_mut().drain(..).collect::<Vec<u8>>();
+        self.handle_recv_data(&recv_data);
     }
 }
 
