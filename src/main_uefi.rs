@@ -1,7 +1,9 @@
 #![no_main]
 
 use alloc::rc::Rc;
+use alloc::string::String;
 use alloc::vec::Vec;
+use core::cell::RefCell;
 use core::cmp::{max, min};
 use agx_definitions::{Color, Drawable, NestedLayerSlice, Point, Rect, StrokeThickness};
 #[allow(dead_code)]
@@ -17,11 +19,13 @@ use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput};
 use uefi::proto::console::pointer::Pointer;
 use uefi::proto::console::text::Key;
 use uefi::table::boot::ScopedProtocol;
+use crate::app::IrcClient;
 use crate::fs::read_file;
 use crate::gui::{ContentView, InputBoxView, TitleView};
 use crate::ui::set_resolution;
 
-struct App {
+struct App<'a> {
+    irc_client: RefCell<IrcClient<'a>>,
     font_regular: Font,
     window: Rc<AwmWindow>,
     content_view: Rc<ContentView>,
@@ -33,12 +37,13 @@ struct App {
     is_left_click_down: bool,
 }
 
-impl App {
+impl<'a> App<'a> {
     fn new(
         resolution: Size,
         font_regular: Font,
         pointer_resolution: Point,
-    ) -> Self {
+        irc_client: IrcClient<'a>,
+    ) -> Rc<Self> {
         let window = AwmWindow::new(resolution);
         let title_sizer = |superview_size: Size| {
             Rect::with_size(
@@ -123,18 +128,22 @@ impl App {
         Rc::clone(&window).add_component(Rc::clone(&input_box) as Rc<dyn UIElement>);
         Rc::clone(&window).add_component(Rc::clone(&send_button) as Rc<dyn UIElement>);
 
-        Self {
-            font_regular,
-            window,
-            content_view: content,
-            input_box_view: input_box,
-            currently_held_key: None,
-            // Start off the mouse in the middle of the screen
-            current_pointer_pos: Point::new(resolution.mid_x(), resolution.mid_y()),
-            cursor_size: Size::new(15, 15),
-            pointer_resolution,
-            is_left_click_down: false,
-        }
+        let _self = Rc::new(
+            Self {
+                irc_client: RefCell::new(irc_client),
+                font_regular,
+                window,
+                content_view: content,
+                input_box_view: Rc::clone(&input_box),
+                currently_held_key: RefCell::new(None),
+                // Start off the mouse in the middle of the screen
+                current_pointer_pos: RefCell::new(Point::new(resolution.mid_x(), resolution.mid_y())),
+                cursor_size: Size::new(15, 15),
+                pointer_resolution,
+                is_left_click_down: RefCell::new(false),
+            }
+        );
+        _self
     }
 
     pub fn handle_recv_data(&self, recv_data: &[u8]) {
@@ -327,20 +336,19 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
         resolution,
     ).unwrap();
 
-    /*
     let mut irc_client = IrcClient::new(bs);
     {
         irc_client.connect_to_server();
-        irc_client.set_nickname("phillip-testing\r\nUSER phillip-testing 0 * :phillip@axleos.com\r\n");
-        //let data = format!("/USER {nickname} 0 * :{real_name}\r\n").into_bytes();
-        //irc_client.set_user("phillip-testing", "phillip@axleos.com");
+        let nickname = "phillip-testing2";
+        let real_name = "phillip@axleos.com";
+        irc_client.set_nickname(nickname);
+        irc_client.set_user(nickname, real_name);
     }
     {
         let conn = irc_client.active_connection.as_mut();
         let conn = conn.unwrap();
         Rc::clone(&conn).set_up_receive_signal_handler();
     }
-    */
     // Theory: we need to do the same careful stuff for transmit as for receive
     // To test, going to try to only set up the RX handler after doing our initial transmits
 
@@ -358,18 +366,13 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
         resolution,
         font_regular,
         pointer_resolution,
+        irc_client,
     );
 
+    //app.handle_recv_data(&("This is a test of a bnch of text that gets sent over the network pipe and sent to the client where it is then rendered and rendered again perhaps on a new line considering its length").as_bytes());
+
     loop {
-        /*
-        irc_client.step();
-        let mut active_connection = irc_client.active_connection.as_mut();
-        let recv_buffer = &active_connection.expect("Expected an active connection").recv_buffer;
-        let recv_data = recv_buffer.lock().borrow_mut().drain(..).collect::<Vec<u8>>();
-        //println!("Got recv data");
-        main_view.handle_recv_data(&recv_data);
-        */
-        //println!("Got recv data");
+        app.step();
         app.handle_keyboard_updates(&mut system_table);
         app.handle_mouse_updates(&mut pointer, pointer_resolution);
         app.draw_and_push_to_display(&mut graphics_protocol);
