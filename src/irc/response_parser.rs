@@ -105,6 +105,22 @@ impl ReplyMyInfoParams {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ReplyISupportParams {
+    nick: Nickname,
+    // PT: I'm not bothering to parse these any deeper for now
+    entries: Vec<String>,
+}
+
+impl ReplyISupportParams {
+    fn new(nickname: &Nickname, entries: &[String]) -> Self {
+        Self {
+            nick: nickname.clone(),
+            entries: entries.to_vec(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct PrivateMessageParameters {
     sender: User,
     recipient: UserOrChannel,
@@ -132,6 +148,7 @@ pub enum IrcCommandName {
     ReplyYourHost,
     ReplyCreated,
     ReplyMyInfo,
+    ReplyISupport,
     Join,
     PrivateMessage,
     Notice,
@@ -144,6 +161,7 @@ impl From<&str> for IrcCommandName {
             "002" => Self::ReplyYourHost,
             "003" => Self::ReplyCreated,
             "004" => Self::ReplyMyInfo,
+            "005" => Self::ReplyISupport,
             "JOIN" => Self::Join,
             "PRIVMSG" => Self::PrivateMessage,
             "NOTICE" => Self::Notice,
@@ -158,6 +176,7 @@ pub enum IrcCommand {
     ReplyYourHost(ReplyYourHostParams),
     ReplyCreated(ReplyCreatedParams),
     ReplyMyInfo(ReplyMyInfoParams),
+    ReplyISupport(ReplyISupportParams),
     Join(JoinParameters),
     PrivateMessage(PrivateMessageParameters),
 }
@@ -269,6 +288,24 @@ impl ResponseParser {
                     )
                 )
             }
+            IrcCommandName::ReplyISupport => {
+                let nick = tokenizer.read_to(' ').expect("Failed to read nick");
+                let mut entries = vec![];
+                loop {
+                    let capability = tokenizer.read_to(' ').expect("Failed to read capability");
+                    entries.push(capability);
+                    match tokenizer.peek() {
+                        None => break,
+                        Some(ch) => {
+                            if ch == ':' {
+                                tokenizer.match_str(":are supported by this server");
+                                break;
+                            }
+                        }
+                    }
+                }
+                IrcCommand::ReplyISupport(ReplyISupportParams::new(&Nickname(nick), &entries))
+            }
             IrcCommandName::Join => {
                 let channel = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a channel name");
                 if channel.contains(" ") {
@@ -295,7 +332,7 @@ impl ResponseParser {
 mod test {
     use alloc::string::ToString;
     use crate::irc::{ResponseParser};
-    use crate::irc::response_parser::{Channel, IrcCommand, IrcCommandName, IrcMessage, JoinParameters, Nickname, ReplyCreatedParams, ReplyMyInfoParams, ReplyWelcomeParams, ReplyYourHostParams};
+    use crate::irc::response_parser::{Channel, IrcCommand, IrcCommandName, IrcMessage, JoinParameters, Nickname, ReplyCreatedParams, ReplyISupportParams, ReplyMyInfoParams, ReplyWelcomeParams, ReplyYourHostParams};
 
     fn parse_line(line: &str) -> IrcMessage {
         let mut p = ResponseParser::new();
@@ -406,5 +443,34 @@ mod test {
                 )
             )
         );
+    }
+
+    #[test]
+    fn test_parse_i_support() {
+        let msg = parse_line(":copper.libera.chat 005 phillipt ACCOUNTEXTBAN=a ETRACE FNC WHOX KNOCK CALLERID=g MONITOR=100 SAFELIST ELIST=CMNTU CHANTYPES=# EXCEPTS INVEX :are supported by this server\r\n");
+        assert_eq!(msg.origin, Some("copper.libera.chat".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ReplyISupport);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ReplyISupport(
+                ReplyISupportParams::new(
+                    &Nickname("phillipt".to_string()),
+                    &[
+                        "ACCOUNTEXTBAN=a".to_string(),
+                        "ETRACE".to_string(),
+                        "FNC".to_string(),
+                        "WHOX".to_string(),
+                        "KNOCK".to_string(),
+                        "CALLERID=g".to_string(),
+                        "MONITOR=100".to_string(),
+                        "SAFELIST".to_string(),
+                        "ELIST=CMNTU".to_string(),
+                        "CHANTYPES=#".to_string(),
+                        "EXCEPTS".to_string(),
+                        "INVEX".to_string(),
+                    ],
+                ),
+            )
+        )
     }
 }
