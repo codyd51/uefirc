@@ -154,8 +154,8 @@ impl<'a> App<'a> {
         let cursor_pos = self.content_view.view.cursor_pos.borrow().1;
         let viewport_height = self.content_view.frame().height();
         *self.content_view.view.view.layer.scroll_offset.borrow_mut() = Point::new(
-            cursor_pos.x,
-            cursor_pos.y - viewport_height + 32,
+            0,
+            cursor_pos.y - viewport_height + 60,
         );
     }
 
