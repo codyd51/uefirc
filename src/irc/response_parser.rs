@@ -6,6 +6,8 @@ use crate::irc::Tokenizer;
 const IRC_LINE_DELIMITER: &'static str = "\r\n";
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Nickname(String);
+#[derive(Debug, Clone, PartialEq)]
 pub struct User(String);
 #[derive(Debug, Clone, PartialEq)]
 pub struct Channel(String);
@@ -22,6 +24,64 @@ impl JoinParameters {
     fn new(channel: &Channel) -> Self {
         Self {
             channel: channel.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReplyWelcomeParams {
+    nick: Nickname,
+    message: String,
+}
+
+impl ReplyWelcomeParams {
+    fn new(nick: &Nickname, message: &str) -> Self {
+        Self {
+            nick: nick.clone(),
+            message: message.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReplyYourHostParams {
+    nick: Nickname,
+    message: String,
+}
+
+impl ReplyYourHostParams {
+    fn new(nick: &Nickname, message: &str) -> Self {
+        Self {
+            nick: nick.clone(),
+            message: message.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReplyCreatedParams {
+    nick: Nickname,
+    message: String,
+}
+
+impl ReplyCreatedParams {
+    fn new(nick: &Nickname, message: &str) -> Self {
+        Self {
+            nick: nick.clone(),
+            message: message.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReplyParameters {
+    message: String,
+}
+
+impl ReplyParameters {
+    fn new(message: &str) -> Self {
+        Self {
+            message: message.to_string(),
         }
     }
 }
@@ -50,6 +110,10 @@ impl PrivateMessageParameters {
 #[derive(Debug, Copy, Clone)]
 #[derive(PartialEq)]
 pub enum IrcCommandName {
+    ReplyWelcome,
+    ReplyYourHost,
+    ReplyCreated,
+    ReplyMyInfo,
     Join,
     PrivateMessage,
     Notice,
@@ -58,6 +122,10 @@ pub enum IrcCommandName {
 impl From<&str> for IrcCommandName {
     fn from(value: &str) -> Self {
         match value {
+            "001" => Self::ReplyWelcome,
+            "002" => Self::ReplyYourHost,
+            "003" => Self::ReplyCreated,
+            "004" => Self::ReplyMyInfo,
             "JOIN" => Self::Join,
             "PRIVMSG" => Self::PrivateMessage,
             "NOTICE" => Self::Notice,
@@ -68,6 +136,10 @@ impl From<&str> for IrcCommandName {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrcCommand {
+    ReplyWelcome(ReplyWelcomeParams),
+    ReplyYourHost(ReplyYourHostParams),
+    ReplyCreated(ReplyCreatedParams),
+    Reply(ReplyParameters),
     Join(JoinParameters),
     PrivateMessage(PrivateMessageParameters),
 }
@@ -143,6 +215,28 @@ impl ResponseParser {
         let command_name = IrcCommandName::from(&raw_command_name as &str);
 
         let command = match command_name {
+            IrcCommandName::ReplyWelcome => {
+                let nick = tokenizer.read_to(' ').expect("Failed to read nick");
+                tokenizer.match_str(":");
+                let message = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a message");
+                IrcCommand::ReplyWelcome(ReplyWelcomeParams::new(&Nickname(nick), &message))
+            }
+            IrcCommandName::ReplyYourHost => {
+                let nick = tokenizer.read_to(' ').expect("Failed to read nick");
+                tokenizer.match_str(":");
+                let message = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a message");
+                IrcCommand::ReplyYourHost(ReplyYourHostParams::new(&Nickname(nick), &message))
+            }
+            IrcCommandName::ReplyCreated => {
+                let nick = tokenizer.read_to(' ').expect("Failed to read nick");
+                tokenizer.match_str(":");
+                let message = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a message");
+                IrcCommand::ReplyCreated(ReplyCreatedParams::new(&Nickname(nick), &message))
+            }
+            IrcCommandName::ReplyMyInfo => {
+                let message = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a message");
+                IrcCommand::Reply(ReplyParameters::new(&message))
+            }
             IrcCommandName::Join => {
                 let channel = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a channel name");
                 if channel.contains(" ") {
@@ -169,17 +263,14 @@ impl ResponseParser {
 mod test {
     use alloc::string::ToString;
     use crate::irc::{ResponseParser};
-    use crate::irc::response_parser::{Channel, IrcCommand, IrcCommandName, JoinParameters};
+    use crate::irc::response_parser::{Channel, IrcCommand, IrcCommandName, IrcMessage, JoinParameters, Nickname, ReplyCreatedParams, ReplyParameters, ReplyWelcomeParams, ReplyYourHostParams};
 
-    #[test]
-    fn test_parse_welcome_message() {
+    fn parse_line(line: &str) -> IrcMessage {
         let mut p = ResponseParser::new();
-        p.ingest(":irc.example.com 001 Nick :Welcome to the IRC Network, Nick!Username@Hostname\r\n".as_bytes());
+        p.ingest(line.as_bytes());
         let parsed_msg = p.parse_next_line().expect("Failed to parse message");
-
-        assert_eq!(parsed_msg.origin, Some("irc.example.com".to_string()));
-
         assert!(p.parse_next_line().is_none());
+        parsed_msg
     }
 
     #[test]
@@ -197,5 +288,52 @@ mod test {
 
         assert!(p.parse_next_line().is_none());
     }
-}
 
+    #[test]
+    fn test_parse_welcome_message() {
+        let msg = parse_line(":irc.example.com 001 phill :Welcome to the IRC Network, phill!s@localhost\r\n");
+        assert_eq!(msg.origin, Some("irc.example.com".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ReplyWelcome);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ReplyWelcome(
+                ReplyWelcomeParams::new(
+                    &Nickname("phill".to_string()),
+                    "Welcome to the IRC Network, phill!s@localhost",
+                )
+            )
+        );
+    }
+
+    #[test]
+    fn test_parse_your_host_message() {
+        let msg = parse_line(":irc.example.com 002 phill :Your host is irc.example.com, running version fake\r\n");
+        assert_eq!(msg.origin, Some("irc.example.com".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ReplyYourHost);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ReplyYourHost(
+                ReplyYourHostParams::new(
+                    &Nickname("phill".to_string()),
+                    "Your host is irc.example.com, running version fake",
+                )
+            )
+        );
+    }
+
+    #[test]
+    fn test_parse_created_message() {
+        let msg = parse_line(":irc.example.com 003 phill :This server was created on caffeine\r\n");
+        assert_eq!(msg.origin, Some("irc.example.com".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ReplyCreated);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ReplyCreated(
+                ReplyCreatedParams::new(
+                    &Nickname("phill".to_string()),
+                    "This server was created on caffeine",
+                )
+            )
+        );
+    }
+}
