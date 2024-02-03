@@ -45,17 +45,36 @@ impl<'a> IrcClient<'a> {
         self.active_connection = Some(connection);
     }
 
-    pub fn set_nickname(&mut self, nickname: &str) {
-        let data = format!("NICK {nickname}\r\n").into_bytes();
+    pub fn send_line_command(&mut self, command: &str) {
+        let data = format!("{command}\r\n").into_bytes();
         let conn = self.active_connection.as_mut();
         conn.unwrap().transmit(&data);
     }
 
-    pub fn set_user(&mut self, nickname: &str, real_name: &str) {
-        let data = format!("/USER {nickname} 0 * :{real_name}\r\n").into_bytes();
-        let conn = self.active_connection.as_mut();
-        conn.unwrap().transmit(&data);
+    pub fn set_nickname(&mut self, nickname: &str) {
+        self.send_line_command(&format!("NICK {nickname}"))
     }
+
+    pub fn send_message_to_user(&mut self, user: &str, message: &str) {
+        self.send_line_command(&format!("PRIVMSG {user} :{message}"))
+    }
+
+    pub fn send_message_to_channel(&mut self, channel: &str, message: &str) {
+        // TODO(PT): Auto-join the channel if not already joined?
+        self.send_line_command(&format!("PRIVMSG #{channel} :{message}"))
+    }
+
+    pub fn join_channel(&mut self, channel: &str) {
+        // TODO(PT): Block if we've already joined this channel?
+        self.send_line_command(&format!("JOIN #{channel}"))
+    }
+
+    pub fn set_user(&mut self, nickname: &str, real_name: &str) {
+        self.send_line_command(&format!("USER {nickname} 0 * :{real_name}"))
+    }
+
+    // TODO(PT): Add an 'info bar' on the right that shows available channels/users
+    // The primary cost is drawing, so we can only draw the first N channels
 
     pub fn step(&mut self) {
         if self.active_connection.is_none() {
