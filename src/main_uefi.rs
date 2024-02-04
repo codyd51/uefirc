@@ -337,31 +337,141 @@ impl<'a> App<'a> {
         text_view.set_cursor_pos(updated_cursor);
     }
 
+    fn render_structured_server_notice(
+        &self,
+        leading_text: &str,
+        message_text: &str,
+    ) {
+        self.render_structured_message_with_attributes(
+            RenderStructuredMessageAttributes::new(
+                leading_text,
+                Color::new(92, 92, 92),
+                Color::new(71, 179, 255),
+                Color::new(53, 133, 189),
+                message_text,
+                Color::black(),
+                Color::new(181, 224, 255),
+                Color::new(150, 186, 212),
+            )
+        )
+    }
 
+    fn render_structured_user_notice(
+        &self,
+        leading_text: &str,
+        message_text: &str,
+    ) {
+        self.render_structured_message_with_attributes(
+            RenderStructuredMessageAttributes::new(
+                leading_text,
+                Color::new(92, 92, 92),
+                Color::new(255, 143, 38),
+                Color::new(207, 116, 31),
+                message_text,
+                Color::black(),
+                Color::new(252, 187, 126),
+                Color::new(196, 145, 96),
+            )
+        )
+    }
+
+    fn render_structured_user_notice_level2(
+        &self,
+        leading_text: &str,
+        message_text: &str,
+    ) {
+        self.render_structured_message_with_attributes(
+            RenderStructuredMessageAttributes::new(
+                leading_text,
+                Color::new(92, 92, 92),
+                Color::new(255, 143, 38),
+                Color::new(207, 116, 31),
+                message_text,
+                Color::black(),
+                Color::new(250, 198, 150),
+                Color::new(199, 158, 119),
+            )
+        )
+    }
+
+    fn render_message(&self, msg: IrcMessage) {
+        match msg.command {
+            IrcCommand::Notice(p) => {
+                self.render_structured_server_notice("Notice", &p.message);
+            }
+            IrcCommand::ReplyLocalUsers(p) => {
+                self.render_structured_server_notice("User Info", &p.message);
+            }
+            IrcCommand::ReplyMessageOfTheDayStart(p) => {
+                self.render_structured_user_notice("Welcome", &p.message);
+            }
+            IrcCommand::ReplyMessageOfTheDayLine(p) => {
+                self.render_structured_user_notice_level2("Welcome", &p.message);
+            }
+            IrcCommand::ReplyMessageOfTheDayEnd(p) => {
+                self.render_structured_user_notice("Welcome", &p.message);
+            }
+            IrcCommand::Mode(p) => {
+                self.render_structured_server_notice("Mode", &p.mode);
+            }
+            IrcCommand::ReplyListClientUsers(p) => {
+                self.render_structured_server_notice("User Info", &p.message);
+            }
+            IrcCommand::ReplyListOperatorUsers(p) => {
+                self.render_structured_server_notice(
+                    "User Info",
+                    &format!("{} {}", p.operator_count, p.message),
                 );
+            }
+            IrcCommand::ReplyListChannels(p) => {
+                self.render_structured_server_notice(
+                    "Channel Info",
+                    &format!("{} {}", p.channel_count, p.message),
                 );
+            }
+            IrcCommand::ReplyListUnknownUsers(p) => {
+                self.render_structured_server_notice(
+                    "Stats",
+                    &format!("{} {}", p.unknown_user_count, p.message),
                 );
+            }
+            IrcCommand::ReplyListUserMe(p) => {
+                self.render_structured_server_notice(
+                    "User Info",
+                    &p.message,
                 );
+            }
+            IrcCommand::ReplyGlobalUsers(p) => {
+                self.render_structured_server_notice(
+                    "Stats",
+                    &p.message,
                 );
+            }
+            IrcCommand::ReplyConnectionStats(p) => {
+                self.render_structured_server_notice(
+                    "Stats",
+                    &p.message,
                 );
             }
             IrcCommand::ReplyWelcome(p) => {
-                self.write_string(&format!("Welcome {}: {}", p.nick, p.message));
+                self.render_structured_user_notice_level2("Welcome", &p.message);
             }
             IrcCommand::ReplyYourHost(p) => {
-                self.write_string(&format!("YourHost {}: {}", p.nick, p.message));
+                self.render_structured_user_notice_level2("Host", &p.message);
             }
             IrcCommand::ReplyCreated(p) => {
-                self.write_string(&format!("Created {}: {}", p.nick, p.message));
+                self.render_structured_server_notice("Created", &p.message);
             }
             IrcCommand::ReplyMyInfo(p) => {
-                self.write_string(&format!("MyInfo {}: {} {} {} {} {:?}", p.nick, p.version, p.server_name, p.available_user_modes, p.available_channel_modes, p.channel_modes_with_params));
+                //self.render_structured_server_notice("Created", &p.message);
+                //self.write_string(&format!("MyInfo {}: {} {} {} {} {:?}", p.nick, p.version, p.server_name, p.available_user_modes, p.available_channel_modes, p.channel_modes_with_params));
             }
             IrcCommand::ReplyISupport(p) => {
-                self.write_string(&format!("ISupport {}: {:?}", p.nick, p.entries));
+                //self.write_string(&format!("ISupport {}: {:?}", p.nick, p.entries));
             }
             unknown => {
-                self.write_string(&format!("Don't know how to format: {unknown:?}"));
+                self.render_structured_server_notice("Unknown", &format!("{unknown:?}"));
+                //self.write_string(&format!("Don't know how to format: {unknown:?}"));
             }
         }
     }
