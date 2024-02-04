@@ -216,6 +216,54 @@ impl ReplyListUserMeParams {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ReplyLocalUsersParams {
+    pub nick: Nickname,
+    pub current_count: usize,
+    pub max_count: usize,
+    pub message: String,
+}
+
+impl ReplyLocalUsersParams {
+    fn new(
+        nickname: &Nickname,
+        current_count: usize,
+        max_count: usize,
+        message: &str,
+    ) -> Self {
+        Self {
+            nick: nickname.clone(),
+            current_count,
+            max_count,
+            message: message.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReplyGlobalUsersParams {
+    pub nick: Nickname,
+    pub current_count: usize,
+    pub max_count: usize,
+    pub message: String,
+}
+
+impl ReplyGlobalUsersParams {
+    fn new(
+        nickname: &Nickname,
+        current_count: usize,
+        max_count: usize,
+        message: &str,
+    ) -> Self {
+        Self {
+            nick: nickname.clone(),
+            current_count,
+            max_count,
+            message: message.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct PrivateMessageParameters {
     sender: User,
     recipient: UserOrChannel,
@@ -249,6 +297,8 @@ pub enum IrcCommandName {
     ReplyListUnknownUsers,
     ReplyListChannels,
     ReplyListUserMe,
+    ReplyLocalUsers,
+    ReplyGlobalUsers,
     Join,
     PrivateMessage,
     Notice,
@@ -267,6 +317,8 @@ impl From<&str> for IrcCommandName {
             "253" => Self::ReplyListUnknownUsers,
             "254" => Self::ReplyListChannels,
             "255" => Self::ReplyListUserMe,
+            "265" => Self::ReplyLocalUsers,
+            "266" => Self::ReplyGlobalUsers,
             "JOIN" => Self::Join,
             "PRIVMSG" => Self::PrivateMessage,
             "NOTICE" => Self::Notice,
@@ -287,6 +339,8 @@ pub enum IrcCommand {
     ReplyListUnknownUsers(ReplyListUnknownUsersParams),
     ReplyListChannels(ReplyListChannelsParams),
     ReplyListUserMe(ReplyListUserMeParams),
+    ReplyLocalUsers(ReplyLocalUsersParams),
+    ReplyGlobalUsers(ReplyGlobalUsersParams),
     Join(JoinParameters),
     PrivateMessage(PrivateMessageParameters),
 }
@@ -427,13 +481,6 @@ impl ResponseParser {
                 }
                 IrcCommand::ReplyISupport(ReplyISupportParams::new(&nick, &entries))
             }
-            /*
-            :copper.libera.chat 251 phillipt :There are 68 users and 33291 invisible on 28 servers
-            :copper.libera.chat 252 phillipt 40 :IRC Operators online
-            :copper.libera.chat 253 phillipt 90 :unknown connection(s)
-            :copper.libera.chat 254 phillipt 22650 :channels formed
-            :copper.libera.chat 255 phillipt :I have 2192 clients and 1 servers
-             */
             IrcCommandName::ReplyListClientUsers => {
                 IrcCommand::ReplyListClientUsers(
                     ReplyListClientUsersParams::new(
@@ -477,6 +524,26 @@ impl ResponseParser {
                     )
                 )
             }
+            IrcCommandName::ReplyLocalUsers => {
+                IrcCommand::ReplyLocalUsers(
+                    ReplyLocalUsersParams::new(
+                        &Self::parse_nickname(&mut tokenizer),
+                        Self::parse_usize(&mut tokenizer),
+                        Self::parse_usize(&mut tokenizer),
+                        &Self::parse_trailing_message(&mut tokenizer),
+                    )
+                )
+            }
+            IrcCommandName::ReplyGlobalUsers => {
+                IrcCommand::ReplyGlobalUsers(
+                    ReplyGlobalUsersParams::new(
+                        &Self::parse_nickname(&mut tokenizer),
+                        Self::parse_usize(&mut tokenizer),
+                        Self::parse_usize(&mut tokenizer),
+                        &Self::parse_trailing_message(&mut tokenizer),
+                    )
+                )
+            }
             IrcCommandName::Join => {
                 let channel = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a channel name");
                 if channel.contains(" ") {
@@ -504,7 +571,7 @@ impl ResponseParser {
 #[cfg(test)]
 mod test {
     use alloc::string::ToString;
-    use crate::irc::{ReplyListChannelsParams, ReplyListClientUsersParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyListUserMeParams, ResponseParser};
+    use crate::irc::{ReplyGlobalUsersParams, ReplyListChannelsParams, ReplyListClientUsersParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyListUserMeParams, ReplyLocalUsersParams, ResponseParser};
     use crate::irc::IrcCommandName::{ReplyListOperatorUsers, ReplyListUnknownUsers};
     use crate::irc::response_parser::{Channel, IrcCommand, IrcCommandName, IrcMessage, JoinParameters, Nickname, ReplyCreatedParams, ReplyISupportParams, ReplyMyInfoParams, ReplyWelcomeParams, ReplyYourHostParams};
 
@@ -717,6 +784,38 @@ mod test {
             IrcCommand::ReplyListUserMe(ReplyListUserMeParams::new(
                 &Nickname::new("phillipt"),
                 "I have 2192 clients and 1 servers",
+            ))
+        )
+    }
+
+    #[test]
+    fn test_parse_local_users() {
+        let msg = parse_line(":copper.libera.chat 265 phillipt 2192 2366 :Current local users 2192, max 2366\r\n");
+        assert_eq!(msg.origin, Some("copper.libera.chat".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ReplyLocalUsers);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ReplyLocalUsers(ReplyLocalUsersParams::new(
+                &Nickname::new("phillipt"),
+                2192,
+                2366,
+                "Current local users 2192, max 2366",
+            ))
+        )
+    }
+
+    #[test]
+    fn test_parse_global_users() {
+        let msg = parse_line(":copper.libera.chat 266 phillipt 33359 36895 :Current global users 33359, max 36895\r\n");
+        assert_eq!(msg.origin, Some("copper.libera.chat".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ReplyGlobalUsers);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ReplyGlobalUsers(ReplyGlobalUsersParams::new(
+                &Nickname::new("phillipt"),
+                33359,
+                36895,
+                "Current global users 33359, max 36895",
             ))
         )
     }
