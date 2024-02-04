@@ -211,6 +211,22 @@ impl<'a> App<'a> {
         );
     }
 
+    fn scroll_up(&self) {
+        let scroll_pos = *self.content_view.view.view.layer.scroll_offset.borrow();
+        *self.content_view.view.view.layer.scroll_offset.borrow_mut() = Point::new(
+            scroll_pos.x,
+            scroll_pos.y - 30,
+        );
+    }
+
+    fn scroll_down(&self) {
+        let scroll_pos = *self.content_view.view.view.layer.scroll_offset.borrow();
+        *self.content_view.view.view.layer.scroll_offset.borrow_mut() = Point::new(
+            scroll_pos.x,
+            scroll_pos.y + 30,
+        );
+    }
+
     fn write_string(&self, s: &str) {
         self.content_view.view.draw_string(s, Color::black());
         self.scroll_to_last_visible_line();
@@ -423,6 +439,19 @@ impl<'a> App<'a> {
             if key_held_on_this_iteration.is_some() {
                 // Inform the window that a new key is held
                 self.window.handle_key_pressed(key_held_on_this_iteration.unwrap());
+
+                // Hack to support scrolling the main content view up and down
+                // UEFI key map for arrow keys:
+                // Up: 1
+                // Down: 2
+                // Right: 3
+                // Left: 4
+                if key_held_on_this_iteration.unwrap() == KeyCode(1) {
+                    self.scroll_up();
+                }
+                else if key_held_on_this_iteration.unwrap() == KeyCode(2) {
+                    self.scroll_down();
+                }
             }
             // And update our state to track that this key is currently held
             *self.currently_held_key.borrow_mut() = key_held_on_this_iteration;
