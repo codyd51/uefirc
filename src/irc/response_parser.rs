@@ -1,13 +1,21 @@
 use alloc::borrow::ToOwned;
 use alloc::string::{String, ToString};
-use alloc::vec;
+use alloc::{format, vec};
 use alloc::vec::Vec;
+use core::fmt::{Display, Formatter};
 use crate::irc::Tokenizer;
 
 const IRC_LINE_DELIMITER: &'static str = "\r\n";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Nickname(String);
+
+impl Display for Nickname {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.write_str(&format!("{}", self.0))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct User(String);
 #[derive(Debug, Clone, PartialEq)]
@@ -31,8 +39,8 @@ impl JoinParameters {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReplyWelcomeParams {
-    nick: Nickname,
-    message: String,
+    pub nick: Nickname,
+    pub message: String,
 }
 
 impl ReplyWelcomeParams {
@@ -46,8 +54,8 @@ impl ReplyWelcomeParams {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReplyYourHostParams {
-    nick: Nickname,
-    message: String,
+    pub nick: Nickname,
+    pub message: String,
 }
 
 impl ReplyYourHostParams {
@@ -61,8 +69,8 @@ impl ReplyYourHostParams {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReplyCreatedParams {
-    nick: Nickname,
-    message: String,
+    pub nick: Nickname,
+    pub message: String,
 }
 
 impl ReplyCreatedParams {
@@ -76,12 +84,12 @@ impl ReplyCreatedParams {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReplyMyInfoParams {
-    nick: Nickname,
-    server_name: String,
-    version: String,
-    available_user_modes: String,
-    available_channel_modes: String,
-    channel_modes_with_params: Option<String>,
+    pub nick: Nickname,
+    pub server_name: String,
+    pub version: String,
+    pub available_user_modes: String,
+    pub available_channel_modes: String,
+    pub channel_modes_with_params: Option<String>,
 }
 
 impl ReplyMyInfoParams {
@@ -106,9 +114,9 @@ impl ReplyMyInfoParams {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReplyISupportParams {
-    nick: Nickname,
+    pub nick: Nickname,
     // PT: I'm not bothering to parse these any deeper for now
-    entries: Vec<String>,
+    pub entries: Vec<String>,
 }
 
 impl ReplyISupportParams {
@@ -184,9 +192,9 @@ pub enum IrcCommand {
 #[derive(Debug)]
 pub struct IrcMessage {
     /// May be sent by the server, but not required
-    origin: Option<String>,
-    command_name: IrcCommandName,
-    command: IrcCommand,
+    pub origin: Option<String>,
+    pub command_name: IrcCommandName,
+    pub command: IrcCommand,
 }
 
 impl IrcMessage {
@@ -232,6 +240,15 @@ impl ResponseParser {
         Some(String::from_utf8(line).expect("Failed to decode"))
     }
 
+    fn parse_nickname(tokenizer: &mut Tokenizer) -> Nickname {
+        Nickname(tokenizer.read_to(' ').expect("Failed to read nick"))
+    }
+
+    fn parse_trailing_message(tokenizer: &mut Tokenizer) -> String {
+        tokenizer.match_str(":");
+        tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a message")
+    }
+
     pub fn parse_next_line(&mut self) -> Option<IrcMessage> {
         let line = match self.read_next_line() {
             None => return None,
@@ -253,25 +270,22 @@ impl ResponseParser {
 
         let command = match command_name {
             IrcCommandName::ReplyWelcome => {
-                let nick = tokenizer.read_to(' ').expect("Failed to read nick");
-                tokenizer.match_str(":");
-                let message = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a message");
-                IrcCommand::ReplyWelcome(ReplyWelcomeParams::new(&Nickname(nick), &message))
+                let nick = Self::parse_nickname(&mut tokenizer);
+                let message = Self::parse_trailing_message(&mut tokenizer);
+                IrcCommand::ReplyWelcome(ReplyWelcomeParams::new(&nick, &message))
             }
             IrcCommandName::ReplyYourHost => {
-                let nick = tokenizer.read_to(' ').expect("Failed to read nick");
-                tokenizer.match_str(":");
-                let message = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a message");
-                IrcCommand::ReplyYourHost(ReplyYourHostParams::new(&Nickname(nick), &message))
+                let nick = Self::parse_nickname(&mut tokenizer);
+                let message = Self::parse_trailing_message(&mut tokenizer);
+                IrcCommand::ReplyYourHost(ReplyYourHostParams::new(&nick, &message))
             }
             IrcCommandName::ReplyCreated => {
-                let nick = tokenizer.read_to(' ').expect("Failed to read nick");
-                tokenizer.match_str(":");
-                let message = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a message");
-                IrcCommand::ReplyCreated(ReplyCreatedParams::new(&Nickname(nick), &message))
+                let nick = Self::parse_nickname(&mut tokenizer);
+                let message = Self::parse_trailing_message(&mut tokenizer);
+                IrcCommand::ReplyCreated(ReplyCreatedParams::new(&nick, &message))
             }
             IrcCommandName::ReplyMyInfo => {
-                let nick = tokenizer.read_to(' ').expect("Failed to read nick");
+                let nick = Self::parse_nickname(&mut tokenizer);
                 let server = tokenizer.read_to(' ').expect("Failed to read server");
                 let version = tokenizer.read_to(' ').expect("Failed to read version");
                 let available_umodes = tokenizer.read_to(' ').expect("Failed to read available user modes");
@@ -279,7 +293,7 @@ impl ResponseParser {
                 let cmodes_with_params = tokenizer.read_to_any(&[" ", IRC_LINE_DELIMITER]);
                 IrcCommand::ReplyMyInfo(
                     ReplyMyInfoParams::new(
-                        &Nickname(nick),
+                        &nick,
                         &server,
                         &version,
                         &available_umodes,
@@ -289,7 +303,7 @@ impl ResponseParser {
                 )
             }
             IrcCommandName::ReplyISupport => {
-                let nick = tokenizer.read_to(' ').expect("Failed to read nick");
+                let nick = Self::parse_nickname(&mut tokenizer);
                 let mut entries = vec![];
                 loop {
                     let capability = tokenizer.read_to(' ').expect("Failed to read capability");
@@ -304,7 +318,7 @@ impl ResponseParser {
                         }
                     }
                 }
-                IrcCommand::ReplyISupport(ReplyISupportParams::new(&Nickname(nick), &entries))
+                IrcCommand::ReplyISupport(ReplyISupportParams::new(&nick, &entries))
             }
             IrcCommandName::Join => {
                 let channel = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a channel name");
@@ -314,8 +328,10 @@ impl ResponseParser {
                 }
                 IrcCommand::Join(JoinParameters::new(&Channel(channel)))
             }
+            IrcCommandName::Notice => {
+                todo!()
+            },
             IrcCommandName::PrivateMessage => todo!(),
-            IrcCommandName::Notice => todo!(),
         };
 
         Some(
