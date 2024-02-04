@@ -240,6 +240,9 @@ pub enum IrcCommandName {
     ReplyLocalUsers,
     ReplyGlobalUsers,
     ReplyConnectionStats,
+    ReplyMessageOfTheDayStart,
+    ReplyMessageOfTheDayLine,
+    ReplyMessageOfTheDayEnd,
     Join,
     PrivateMessage,
     Notice,
@@ -261,6 +264,9 @@ impl From<&str> for IrcCommandName {
             "265" => Self::ReplyLocalUsers,
             "266" => Self::ReplyGlobalUsers,
             "250" => Self::ReplyConnectionStats,
+            "375" => Self::ReplyMessageOfTheDayStart,
+            "372" => Self::ReplyMessageOfTheDayLine,
+            "376" => Self::ReplyMessageOfTheDayEnd,
             "JOIN" => Self::Join,
             "PRIVMSG" => Self::PrivateMessage,
             "NOTICE" => Self::Notice,
@@ -284,6 +290,9 @@ pub enum IrcCommand {
     ReplyLocalUsers(ReplyLocalUsersParams),
     ReplyGlobalUsers(ReplyGlobalUsersParams),
     ReplyConnectionStats(ReplyWithNickAndMessageParams),
+    ReplyMessageOfTheDayStart(ReplyWithNickAndMessageParams),
+    ReplyMessageOfTheDayLine(ReplyWithNickAndMessageParams),
+    ReplyMessageOfTheDayEnd(ReplyWithNickAndMessageParams),
     Join(JoinParameters),
     PrivateMessage(PrivateMessageParameters),
 }
@@ -498,6 +507,30 @@ impl ResponseParser {
             }
             IrcCommandName::ReplyConnectionStats => {
                 IrcCommand::ReplyConnectionStats(
+                    ReplyWithNickAndMessageParams::new(
+                        &Self::parse_nickname(&mut tokenizer),
+                        &Self::parse_trailing_message(&mut tokenizer),
+                    )
+                )
+            }
+            IrcCommandName::ReplyMessageOfTheDayStart => {
+                IrcCommand::ReplyMessageOfTheDayStart(
+                    ReplyWithNickAndMessageParams::new(
+                        &Self::parse_nickname(&mut tokenizer),
+                        &Self::parse_trailing_message(&mut tokenizer),
+                    )
+                )
+            }
+            IrcCommandName::ReplyMessageOfTheDayLine => {
+                IrcCommand::ReplyMessageOfTheDayLine(
+                    ReplyWithNickAndMessageParams::new(
+                        &Self::parse_nickname(&mut tokenizer),
+                        &Self::parse_trailing_message(&mut tokenizer),
+                    )
+                )
+            }
+            IrcCommandName::ReplyMessageOfTheDayEnd => {
+                IrcCommand::ReplyMessageOfTheDayEnd(
                     ReplyWithNickAndMessageParams::new(
                         &Self::parse_nickname(&mut tokenizer),
                         &Self::parse_trailing_message(&mut tokenizer),
@@ -794,4 +827,45 @@ mod test {
         )
     }
 
+    #[test]
+    fn test_parse_message_of_the_day_start() {
+        let msg = parse_line(":copper.libera.chat 375 phillipt :- copper.libera.chat Message of the Day -\r\n");
+        assert_eq!(msg.origin, Some("copper.libera.chat".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ReplyMessageOfTheDayStart);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ReplyMessageOfTheDayStart(ReplyWithNickAndMessageParams::new(
+                &Nickname::new("phillipt"),
+                "- copper.libera.chat Message of the Day -",
+            ))
+        )
+    }
+
+    #[test]
+    fn test_parse_message_of_the_day_line() {
+        let msg = parse_line(":copper.libera.chat 372 phillipt :- Welcome to Libera Chat, the IRC network for\r\n");
+        assert_eq!(msg.origin, Some("copper.libera.chat".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ReplyMessageOfTheDayLine);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ReplyMessageOfTheDayLine(ReplyWithNickAndMessageParams::new(
+                &Nickname::new("phillipt"),
+                "- Welcome to Libera Chat, the IRC network for",
+            ))
+        )
+    }
+
+    #[test]
+    fn test_parse_message_of_the_day_end() {
+        let msg = parse_line(":copper.libera.chat 376 phillipt :End of /MOTD command.\r\n");
+        assert_eq!(msg.origin, Some("copper.libera.chat".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ReplyMessageOfTheDayEnd);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ReplyMessageOfTheDayEnd(ReplyWithNickAndMessageParams::new(
+                &Nickname::new("phillipt"),
+                "End of /MOTD command.",
+            ))
+        )
+    }
 }
