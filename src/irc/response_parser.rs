@@ -226,9 +226,9 @@ impl PrivateMessageParameters {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModeParams {
-    nick: Nickname,
+    pub nick: Nickname,
     // PT: Not bothering to parse this deeper for now
-    mode: String,
+    pub mode: String,
 }
 
 impl ModeParams {

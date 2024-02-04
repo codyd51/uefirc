@@ -26,6 +26,43 @@ use crate::gui::{ContentView, InputBoxView, TitleView};
 use crate::irc::{IrcCommand, IrcCommandName, IrcMessage, ResponseParser};
 use crate::ui::set_resolution;
 
+#[derive(Debug, Copy, Clone)]
+struct RenderStructuredMessageAttributes<'a> {
+    leading_text: &'a str,
+    leading_text_color: Color,
+    leading_text_background_color: Color,
+    leading_text_background_border_color: Color,
+
+    main_text: &'a str,
+    main_text_color: Color,
+    main_text_background_color: Color,
+    main_text_background_border_color: Color,
+}
+
+impl<'a> RenderStructuredMessageAttributes<'a> {
+    fn new(
+        leading_text: &'a str,
+        leading_text_color: Color,
+        leading_text_background_color: Color,
+        leading_text_background_border_color: Color,
+        main_text: &'a str,
+        main_text_color: Color,
+        main_text_background_color: Color,
+        main_text_background_border_color: Color,
+    ) -> Self {
+        Self {
+            leading_text,
+            leading_text_color,
+            leading_text_background_color,
+            leading_text_background_border_color,
+            main_text,
+            main_text_color,
+            main_text_background_color,
+            main_text_background_border_color,
+        }
+    }
+}
+
 struct App<'a> {
     irc_client: RefCell<IrcClient<'a>>,
     font_regular: Font,
@@ -170,7 +207,7 @@ impl<'a> App<'a> {
         let viewport_height = self.content_view.frame().height();
         *self.content_view.view.view.layer.scroll_offset.borrow_mut() = Point::new(
             0,
-            cursor_pos.y - viewport_height + 60,
+            cursor_pos.y - viewport_height + 40,
         );
     }
 
@@ -184,98 +221,108 @@ impl<'a> App<'a> {
         self.write_string(recv_as_str);
     }
 
-    fn render_message(&self, msg: IrcMessage) {
-        match msg.command {
-            IrcCommand::Notice(p) => {
-                let text_view = &self.content_view.view;
-                let scroll_view = &self.content_view.view.view;
+    fn render_structured_message_with_attributes(
+        &self,
+        attributes: RenderStructuredMessageAttributes,
+    ) {
+        let text_view = &self.content_view.view;
+        let scroll_view = &self.content_view.view.view;
 
-                // TODO(PT): Share this with the content view?
-                let font_size = Size::new(20, 20);
-                let leading_text = "Notice";
-                let leading_right_side_padding_px = 10;
-                let rendered_leading_text_size = rendered_string_size(
-                    leading_text,
-                    &self.font_italic,
-                    font_size,
-                );
+        // TODO(PT): Share this with the content view?
+        let font_size = Size::new(20, 20);
+        let leading_right_side_padding_px = 10;
+        let rendered_leading_text_size = rendered_string_size(
+            attributes.leading_text,
+            &self.font_italic,
+            font_size,
+        );
 
-                // TODO(PT): This does not take into account extra height induced by line breaks
-                let rendered_message_text_size = rendered_string_size(
-                    &p.message,
-                    &self.font_regular,
-                    font_size,
-                );
+        // TODO(PT): This does not take into account extra height induced by line breaks
+        let rendered_message_text_size = rendered_string_size(
+            attributes.main_text,
+            &self.font_regular,
+            font_size,
+        );
 
-                // The background rectangles should take the larger size of the rendered LHS or RHS
-                let background_rect_height = max(rendered_leading_text_size.height, rendered_message_text_size.height);
+        // The background rectangles should take the larger size of the rendered LHS or RHS
+        let background_rect_height = max(rendered_leading_text_size.height, rendered_message_text_size.height);
 
-                let initial_cursor = text_view.cursor_pos();
-                let start_of_message_content_x = rendered_leading_text_size.width + leading_right_side_padding_px;
-                let leading_text_background_frame = Rect::from_parts(
-                    initial_cursor.1,
-                    Size::new(
-                        start_of_message_content_x,
-                        background_rect_height,
-                    ),
-                );
-                // Semi-dark blue
-                scroll_view.get_slice().fill_rect(
-                    leading_text_background_frame,
-                    Color::new(71, 179, 255),
-                    StrokeThickness::Filled,
-                );
-                // Dark blue outline
-                scroll_view.get_slice().fill_rect(
-                    leading_text_background_frame,
-                    Color::new(53, 133, 189),
-                    StrokeThickness::Width(1),
-                );
+        let initial_cursor = text_view.cursor_pos();
+        let start_of_message_content_x = rendered_leading_text_size.width + leading_right_side_padding_px;
+        let leading_text_background_frame = Rect::from_parts(
+            initial_cursor.1,
+            Size::new(
+                start_of_message_content_x,
+                background_rect_height,
+            ),
+        );
+        // Background of leading text
+        scroll_view.get_slice().fill_rect(
+            leading_text_background_frame,
+            attributes.leading_text_background_color,
+            StrokeThickness::Filled,
+        );
+        // Background border of leading text
+        scroll_view.get_slice().fill_rect(
+            leading_text_background_frame,
+            attributes.leading_text_background_border_color,
+            StrokeThickness::Width(1),
+        );
 
-                // TODO(PT): Update the cursor...
-                text_view.draw_string_with_font(
-                    leading_text,
-                    &self.font_italic,
-                    font_size,
-                    Color::new(92, 92, 92),
-                );
-                let mut cursor = text_view.cursor_pos();
-                let message_left_side_padding_x = 10;
-                cursor.1.x = start_of_message_content_x + message_left_side_padding_x;
-                text_view.set_cursor_pos(cursor);
+        text_view.draw_string_with_font(
+            attributes.leading_text,
+            &self.font_italic,
+            font_size,
+            attributes.leading_text_color,
+        );
+        let mut cursor = text_view.cursor_pos();
+        let message_left_side_padding_x = 6;
+        cursor.1.x = start_of_message_content_x + message_left_side_padding_x;
+        text_view.set_cursor_pos(cursor);
 
-                // Draw the background for the message itself
-                // TODO(PT): What about when we need to break to a new line..?
-                let message_line_size = Size::new(
-                    text_view.frame().size.width - start_of_message_content_x,
-                    background_rect_height,
+        // Draw the background for the message itself
+        // TODO(PT): What about when we need to break to a new line..?
+        let message_line_size = Size::new(
+            text_view.frame().size.width - start_of_message_content_x,
+            background_rect_height,
+        );
+        let message_background_frame = Rect::from_parts(
+            Point::new(start_of_message_content_x, cursor.1.y),
+            message_line_size,
+        );
+        // Background of leading text
+        scroll_view.get_slice().fill_rect(
+            message_background_frame,
+            attributes.main_text_background_color,
+            StrokeThickness::Filled,
+        );
+        /*
+        // Background border of leading text
+        // TODO(PT): It looks like outline rects that are spread across multiple scroll view tiles render edges
+        // at tile boundaries, which is incorrect
+        scroll_view.get_slice().fill_rect(
+            message_background_frame,
+            attributes.main_text_background_border_color,
+            StrokeThickness::Width(1),
+        );
+        */
+        text_view.draw_string(attributes.main_text, Color::black());
+        // Advance to the next line
+        let mut updated_cursor = text_view.cursor_pos();
+        updated_cursor.1 = Point::new(
+            initial_cursor.1.x,
+            initial_cursor.1.y + background_rect_height,
+        );
+        text_view.set_cursor_pos(updated_cursor);
+    }
+
+
                 );
-                let message_background_frame = Rect::from_parts(
-                    Point::new(start_of_message_content_x, cursor.1.y),
-                    message_line_size,
                 );
-                // Light blue
-                scroll_view.get_slice().fill_rect(
-                    message_background_frame,
-                    Color::new(181, 224, 255),
-                    StrokeThickness::Filled,
                 );
-                /*
-                // Slightly darker outline
-                scroll_view.get_slice().fill_rect(
-                    message_background_frame,
-                    Color::new(150, 186, 212),
-                    StrokeThickness::Width(1),
                 );
-                */
-                text_view.draw_string(&p.message, Color::black());
-                // Advance to the next line
-                let mut updated_cursor = text_view.cursor_pos();
-                updated_cursor.1 = Point::new(
-                    initial_cursor.1.x,
-                    initial_cursor.1.y + background_rect_height,
                 );
-                text_view.set_cursor_pos(updated_cursor);
+                );
             }
             IrcCommand::ReplyWelcome(p) => {
                 self.write_string(&format!("Welcome {}: {}", p.nick, p.message));
