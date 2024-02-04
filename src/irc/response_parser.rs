@@ -10,6 +10,12 @@ const IRC_LINE_DELIMITER: &'static str = "\r\n";
 #[derive(Debug, Clone, PartialEq)]
 pub struct Nickname(String);
 
+impl Nickname {
+    fn new(nick: &str) -> Self {
+        Self(nick.to_string())
+    }
+}
+
 impl Display for Nickname {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         f.write_str(&format!("{}", self.0))
@@ -129,6 +135,87 @@ impl ReplyISupportParams {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ReplyListClientUsersParams {
+    pub nick: Nickname,
+    pub message: String,
+}
+
+impl ReplyListClientUsersParams {
+    fn new(nickname: &Nickname, message: &str) -> Self {
+        Self {
+            nick: nickname.clone(),
+            message: message.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReplyListOperatorUsersParams {
+    pub nickname: Nickname,
+    pub operator_count: usize,
+    pub message: String,
+}
+
+impl ReplyListOperatorUsersParams {
+    fn new(nickname: &Nickname, operator_count: usize, message: &str) -> Self {
+        Self {
+            nickname: nickname.clone(),
+            operator_count,
+            message: message.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReplyListUnknownUsersParams {
+    pub nickname: Nickname,
+    pub unknown_user_count: usize,
+    pub message: String,
+}
+
+impl ReplyListUnknownUsersParams {
+    fn new(nickname: &Nickname, unknown_user_count: usize, message: &str) -> Self {
+        Self {
+            nickname: nickname.clone(),
+            unknown_user_count,
+            message: message.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReplyListChannelsParams {
+    pub nickname: Nickname,
+    pub channel_count: usize,
+    pub message: String,
+}
+
+impl ReplyListChannelsParams {
+    fn new(nickname: &Nickname, channel_count: usize, message: &str) -> Self {
+        Self {
+            nickname: nickname.clone(),
+            channel_count,
+            message: message.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReplyListUserMeParams {
+    pub nick: Nickname,
+    pub message: String,
+}
+
+impl ReplyListUserMeParams {
+    fn new(nickname: &Nickname, message: &str) -> Self {
+        Self {
+            nick: nickname.clone(),
+            message: message.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct PrivateMessageParameters {
     sender: User,
     recipient: UserOrChannel,
@@ -157,6 +244,11 @@ pub enum IrcCommandName {
     ReplyCreated,
     ReplyMyInfo,
     ReplyISupport,
+    ReplyListClientUsers,
+    ReplyListOperatorUsers,
+    ReplyListUnknownUsers,
+    ReplyListChannels,
+    ReplyListUserMe,
     Join,
     PrivateMessage,
     Notice,
@@ -170,6 +262,11 @@ impl From<&str> for IrcCommandName {
             "003" => Self::ReplyCreated,
             "004" => Self::ReplyMyInfo,
             "005" => Self::ReplyISupport,
+            "251" => Self::ReplyListClientUsers,
+            "252" => Self::ReplyListOperatorUsers,
+            "253" => Self::ReplyListUnknownUsers,
+            "254" => Self::ReplyListChannels,
+            "255" => Self::ReplyListUserMe,
             "JOIN" => Self::Join,
             "PRIVMSG" => Self::PrivateMessage,
             "NOTICE" => Self::Notice,
@@ -185,6 +282,11 @@ pub enum IrcCommand {
     ReplyCreated(ReplyCreatedParams),
     ReplyMyInfo(ReplyMyInfoParams),
     ReplyISupport(ReplyISupportParams),
+    ReplyListClientUsers(ReplyListClientUsersParams),
+    ReplyListOperatorUsers(ReplyListOperatorUsersParams),
+    ReplyListUnknownUsers(ReplyListUnknownUsersParams),
+    ReplyListChannels(ReplyListChannelsParams),
+    ReplyListUserMe(ReplyListUserMeParams),
     Join(JoinParameters),
     PrivateMessage(PrivateMessageParameters),
 }
@@ -247,6 +349,11 @@ impl ResponseParser {
     fn parse_trailing_message(tokenizer: &mut Tokenizer) -> String {
         tokenizer.match_str(":");
         tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a message")
+    }
+
+    fn parse_usize(tokenizer: &mut Tokenizer) -> usize {
+        let val_str = tokenizer.read_to(' ').expect("Failed to read a word");
+        usize::from_str_radix(&val_str, 10).expect("Failed to parse a usize")
     }
 
     pub fn parse_next_line(&mut self) -> Option<IrcMessage> {
@@ -320,6 +427,56 @@ impl ResponseParser {
                 }
                 IrcCommand::ReplyISupport(ReplyISupportParams::new(&nick, &entries))
             }
+            /*
+            :copper.libera.chat 251 phillipt :There are 68 users and 33291 invisible on 28 servers
+            :copper.libera.chat 252 phillipt 40 :IRC Operators online
+            :copper.libera.chat 253 phillipt 90 :unknown connection(s)
+            :copper.libera.chat 254 phillipt 22650 :channels formed
+            :copper.libera.chat 255 phillipt :I have 2192 clients and 1 servers
+             */
+            IrcCommandName::ReplyListClientUsers => {
+                IrcCommand::ReplyListClientUsers(
+                    ReplyListClientUsersParams::new(
+                        &Self::parse_nickname(&mut tokenizer),
+                        &Self::parse_trailing_message(&mut tokenizer),
+                    )
+                )
+            }
+            IrcCommandName::ReplyListOperatorUsers => {
+                IrcCommand::ReplyListOperatorUsers(
+                    ReplyListOperatorUsersParams::new(
+                        &Self::parse_nickname(&mut tokenizer),
+                        Self::parse_usize(&mut tokenizer),
+                        &Self::parse_trailing_message(&mut tokenizer),
+                    )
+                )
+            }
+            IrcCommandName::ReplyListUnknownUsers => {
+                IrcCommand::ReplyListUnknownUsers(
+                    ReplyListUnknownUsersParams::new(
+                        &Self::parse_nickname(&mut tokenizer),
+                        Self::parse_usize(&mut tokenizer),
+                        &Self::parse_trailing_message(&mut tokenizer),
+                    )
+                )
+            }
+            IrcCommandName::ReplyListChannels => {
+                IrcCommand::ReplyListChannels(
+                    ReplyListChannelsParams::new(
+                        &Self::parse_nickname(&mut tokenizer),
+                        Self::parse_usize(&mut tokenizer),
+                        &Self::parse_trailing_message(&mut tokenizer),
+                    )
+                )
+            }
+            IrcCommandName::ReplyListUserMe => {
+                IrcCommand::ReplyListUserMe(
+                    ReplyListUserMeParams::new(
+                        &Self::parse_nickname(&mut tokenizer),
+                        &Self::parse_trailing_message(&mut tokenizer),
+                    )
+                )
+            }
             IrcCommandName::Join => {
                 let channel = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a channel name");
                 if channel.contains(" ") {
@@ -347,7 +504,8 @@ impl ResponseParser {
 #[cfg(test)]
 mod test {
     use alloc::string::ToString;
-    use crate::irc::{ResponseParser};
+    use crate::irc::{ReplyListChannelsParams, ReplyListClientUsersParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyListUserMeParams, ResponseParser};
+    use crate::irc::IrcCommandName::{ReplyListOperatorUsers, ReplyListUnknownUsers};
     use crate::irc::response_parser::{Channel, IrcCommand, IrcCommandName, IrcMessage, JoinParameters, Nickname, ReplyCreatedParams, ReplyISupportParams, ReplyMyInfoParams, ReplyWelcomeParams, ReplyYourHostParams};
 
     fn parse_line(line: &str) -> IrcMessage {
@@ -487,6 +645,79 @@ mod test {
                     ],
                 ),
             )
+        )
+    }
+
+    #[test]
+    fn test_parse_list_client_users() {
+        let msg = parse_line(":copper.libera.chat 251 phillipt :There are 68 users and 33291 invisible on 28 servers\r\n");
+        assert_eq!(msg.origin, Some("copper.libera.chat".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ReplyListClientUsers);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ReplyListClientUsers(ReplyListClientUsersParams::new(
+                &Nickname::new("phillipt"),
+                "There are 68 users and 33291 invisible on 28 servers",
+            ))
+        )
+    }
+
+    #[test]
+    fn test_parse_list_operator_users() {
+        let msg = parse_line(":copper.libera.chat 252 phillipt 40 :IRC Operators online\r\n");
+        assert_eq!(msg.origin, Some("copper.libera.chat".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ReplyListOperatorUsers);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ReplyListOperatorUsers(ReplyListOperatorUsersParams::new(
+                &Nickname::new("phillipt"),
+                40,
+                "IRC Operators online",
+            ))
+        )
+    }
+
+    #[test]
+    fn test_parse_list_unknown_users() {
+        let msg = parse_line(":copper.libera.chat 253 phillipt 90 :unknown connection(s)\r\n");
+        assert_eq!(msg.origin, Some("copper.libera.chat".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ReplyListUnknownUsers);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ReplyListUnknownUsers(ReplyListUnknownUsersParams::new(
+                &Nickname::new("phillipt"),
+                90,
+                "unknown connection(s)",
+            ))
+        )
+    }
+
+    #[test]
+    fn test_parse_list_channels() {
+        let msg = parse_line(":copper.libera.chat 254 phillipt 22650 :channels formed\r\n");
+        assert_eq!(msg.origin, Some("copper.libera.chat".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ReplyListChannels);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ReplyListChannels(ReplyListChannelsParams::new(
+                &Nickname::new("phillipt"),
+                22650,
+                "channels formed",
+            ))
+        )
+    }
+
+    #[test]
+    fn test_parse_list_user_me() {
+        let msg = parse_line(":copper.libera.chat 255 phillipt :I have 2192 clients and 1 servers\r\n");
+        assert_eq!(msg.origin, Some("copper.libera.chat".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ReplyListUserMe);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ReplyListUserMe(ReplyListUserMeParams::new(
+                &Nickname::new("phillipt"),
+                "I have 2192 clients and 1 servers",
+            ))
         )
     }
 }
