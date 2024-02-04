@@ -224,6 +224,25 @@ impl PrivateMessageParameters {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModeParams {
+    nick: Nickname,
+    // PT: Not bothering to parse this deeper for now
+    mode: String,
+}
+
+impl ModeParams {
+    fn new(
+        nick: &Nickname,
+        mode: &str,
+    ) -> Self {
+        Self {
+            nick: nick.clone(),
+            mode: mode.to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 #[derive(PartialEq)]
 pub enum IrcCommandName {
@@ -243,6 +262,7 @@ pub enum IrcCommandName {
     ReplyMessageOfTheDayStart,
     ReplyMessageOfTheDayLine,
     ReplyMessageOfTheDayEnd,
+    Mode,
     Join,
     PrivateMessage,
     Notice,
@@ -267,6 +287,7 @@ impl From<&str> for IrcCommandName {
             "375" => Self::ReplyMessageOfTheDayStart,
             "372" => Self::ReplyMessageOfTheDayLine,
             "376" => Self::ReplyMessageOfTheDayEnd,
+            "MODE" => Self::Mode,
             "JOIN" => Self::Join,
             "PRIVMSG" => Self::PrivateMessage,
             "NOTICE" => Self::Notice,
@@ -293,6 +314,7 @@ pub enum IrcCommand {
     ReplyMessageOfTheDayStart(ReplyWithNickAndMessageParams),
     ReplyMessageOfTheDayLine(ReplyWithNickAndMessageParams),
     ReplyMessageOfTheDayEnd(ReplyWithNickAndMessageParams),
+    Mode(ModeParams),
     Join(JoinParameters),
     PrivateMessage(PrivateMessageParameters),
 }
@@ -537,6 +559,14 @@ impl ResponseParser {
                     )
                 )
             }
+            IrcCommandName::Mode => {
+                IrcCommand::Mode(
+                    ModeParams::new(
+                        &Self::parse_nickname(&mut tokenizer),
+                        &Self::parse_trailing_message(&mut tokenizer),
+                    )
+                )
+            }
             IrcCommandName::Join => {
                 let channel = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a channel name");
                 if channel.contains(" ") {
@@ -564,8 +594,7 @@ impl ResponseParser {
 #[cfg(test)]
 mod test {
     use alloc::string::ToString;
-    use crate::irc::{ReplyGlobalUsersParams, ReplyListChannelsParams, ReplyWithNickAndMessageParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyLocalUsersParams, ResponseParser};
-    use crate::irc::IrcCommandName::{ReplyListOperatorUsers, ReplyListUnknownUsers};
+    use crate::irc::{ReplyGlobalUsersParams, ReplyListChannelsParams, ReplyWithNickAndMessageParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyLocalUsersParams, ResponseParser, ModeParams};
     use crate::irc::response_parser::{Channel, IrcCommand, IrcCommandName, IrcMessage, JoinParameters, Nickname, ReplyISupportParams, ReplyMyInfoParams};
 
     fn parse_line(line: &str) -> IrcMessage {
@@ -865,6 +894,20 @@ mod test {
             IrcCommand::ReplyMessageOfTheDayEnd(ReplyWithNickAndMessageParams::new(
                 &Nickname::new("phillipt"),
                 "End of /MOTD command.",
+            ))
+        )
+    }
+
+    #[test]
+    fn test_parse_mode() {
+        let msg = parse_line(":phillipt MODE phillipt :+iw\r\n");
+        assert_eq!(msg.origin, Some("phillipt".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::Mode);
+        assert_eq!(
+            msg.command,
+            IrcCommand::Mode(ModeParams::new(
+                &Nickname::new("phillipt"),
+                "+iw",
             ))
         )
     }
