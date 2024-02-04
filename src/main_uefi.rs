@@ -1,5 +1,6 @@
 #![no_main]
 
+use alloc::format;
 use alloc::rc::Rc;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -22,6 +23,7 @@ use uefi::table::boot::ScopedProtocol;
 use crate::app::IrcClient;
 use crate::fs::read_file;
 use crate::gui::{ContentView, InputBoxView, TitleView};
+use crate::irc::{IrcCommand, IrcCommandName, IrcMessage, ResponseParser};
 use crate::ui::set_resolution;
 
 struct App<'a> {
@@ -35,6 +37,7 @@ struct App<'a> {
     cursor_size: Size,
     pointer_resolution: Point,
     is_left_click_down: RefCell<bool>,
+    response_parser: RefCell<ResponseParser>,
 }
 
 impl<'a> App<'a> {
@@ -138,6 +141,7 @@ impl<'a> App<'a> {
                 cursor_size: Size::new(15, 15),
                 pointer_resolution,
                 is_left_click_down: RefCell::new(false),
+                response_parser: RefCell::new(ResponseParser::new()),
             }
         );
 
@@ -157,17 +161,47 @@ impl<'a> App<'a> {
         _self
     }
 
-    pub fn handle_recv_data(&self, recv_data: &[u8]) {
-        let recv_as_str = core::str::from_utf8(recv_data).unwrap();
-        for ch in recv_as_str.chars() {
-            self.content_view.view.draw_char_and_update_cursor(ch, Color::black());
-        }
+    fn scroll_to_last_visible_line(&self) {
+        // Auto-scroll to the last visible message
         let cursor_pos = self.content_view.view.cursor_pos.borrow().1;
         let viewport_height = self.content_view.frame().height();
         *self.content_view.view.view.layer.scroll_offset.borrow_mut() = Point::new(
             0,
             cursor_pos.y - viewport_height + 60,
         );
+    }
+
+    fn write_string(&self, s: &str) {
+        self.content_view.view.draw_string(s, Color::black());
+        self.scroll_to_last_visible_line();
+    }
+
+    pub fn handle_recv_data(&self, recv_data: &[u8]) {
+        let recv_as_str = core::str::from_utf8(recv_data).unwrap();
+        self.write_string(recv_as_str);
+    }
+
+    fn render_message(&self, msg: IrcMessage) {
+        match msg.command {
+            IrcCommand::ReplyWelcome(p) => {
+                self.write_string(&format!("Welcome {}: {}", p.nick, p.message));
+            }
+            IrcCommand::ReplyYourHost(p) => {
+                self.write_string(&format!("YourHost {}: {}", p.nick, p.message));
+            }
+            IrcCommand::ReplyCreated(p) => {
+                self.write_string(&format!("Created {}: {}", p.nick, p.message));
+            }
+            IrcCommand::ReplyMyInfo(p) => {
+                self.write_string(&format!("MyInfo {}: {} {} {} {} {:?}", p.nick, p.version, p.server_name, p.available_user_modes, p.available_channel_modes, p.channel_modes_with_params));
+            }
+            IrcCommand::ReplyISupport(p) => {
+                self.write_string(&format!("ISupport {}: {:?}", p.nick, p.entries));
+            }
+            unknown => {
+                self.write_string(&format!("Don't know how to format: {unknown:?}"));
+            }
+        }
     }
 
     fn handle_enter_key_pressed(&self) {
@@ -239,7 +273,6 @@ impl<'a> App<'a> {
         };
 
         // Are we changing state in any way?
-        //println!("Got key {key_held_on_this_iteration:?}");
         let currently_held_key = *self.currently_held_key.borrow();
         if key_held_on_this_iteration != currently_held_key {
             // Are we switching away from a held key?
@@ -346,7 +379,12 @@ impl<'a> App<'a> {
         let mut active_connection = irc_client.active_connection.as_mut();
         let recv_buffer = &active_connection.expect("Expected an active connection").recv_buffer;
         let recv_data = recv_buffer.lock().borrow_mut().drain(..).collect::<Vec<u8>>();
-        self.handle_recv_data(&recv_data);
+        let mut response_parser = self.response_parser.borrow_mut();
+        response_parser.ingest(&recv_data);
+
+        while let Some(msg) = response_parser.parse_next_line() {
+            self.render_message(msg);
+        }
     }
 }
 
