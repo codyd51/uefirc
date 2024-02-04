@@ -284,8 +284,8 @@ impl ErrorParams {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NoticeParams {
-    target: String,
-    message: String,
+    pub target: String,
+    pub message: String,
 }
 
 impl NoticeParams {

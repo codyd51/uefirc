@@ -14,7 +14,7 @@ use libgui::{AwmWindow, KeyCode};
 use libgui::button::Button;
 use libgui::ui_elements::UIElement;
 use log::info;
-use ttf_renderer::Font;
+use ttf_renderer::{Font, rendered_string_size};
 use uefi::prelude::*;
 use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput};
 use uefi::proto::console::pointer::Pointer;
@@ -29,6 +29,7 @@ use crate::ui::set_resolution;
 struct App<'a> {
     irc_client: RefCell<IrcClient<'a>>,
     font_regular: Font,
+    font_italic: Font,
     window: Rc<AwmWindow>,
     content_view: Rc<ContentView>,
     input_box_view: Rc<InputBoxView>,
@@ -44,6 +45,7 @@ impl<'a> App<'a> {
     fn new(
         resolution: Size,
         font_regular: Font,
+        font_italic: Font,
         pointer_resolution: Point,
         irc_client: IrcClient<'a>,
     ) -> Rc<Self> {
@@ -132,6 +134,7 @@ impl<'a> App<'a> {
             Self {
                 irc_client: RefCell::new(irc_client),
                 font_regular,
+                font_italic,
                 window,
                 content_view: content,
                 input_box_view: Rc::clone(&input_box),
@@ -183,6 +186,97 @@ impl<'a> App<'a> {
 
     fn render_message(&self, msg: IrcMessage) {
         match msg.command {
+            IrcCommand::Notice(p) => {
+                let text_view = &self.content_view.view;
+                let scroll_view = &self.content_view.view.view;
+
+                // TODO(PT): Share this with the content view?
+                let font_size = Size::new(20, 20);
+                let leading_text = "Notice";
+                let leading_right_side_padding_px = 10;
+                let rendered_leading_text_size = rendered_string_size(
+                    leading_text,
+                    &self.font_italic,
+                    font_size,
+                );
+
+                // TODO(PT): This does not take into account extra height induced by line breaks
+                let rendered_message_text_size = rendered_string_size(
+                    &p.message,
+                    &self.font_regular,
+                    font_size,
+                );
+
+                // The background rectangles should take the larger size of the rendered LHS or RHS
+                let background_rect_height = max(rendered_leading_text_size.height, rendered_message_text_size.height);
+
+                let initial_cursor = text_view.cursor_pos();
+                let start_of_message_content_x = rendered_leading_text_size.width + leading_right_side_padding_px;
+                let leading_text_background_frame = Rect::from_parts(
+                    initial_cursor.1,
+                    Size::new(
+                        start_of_message_content_x,
+                        background_rect_height,
+                    ),
+                );
+                // Semi-dark blue
+                scroll_view.get_slice().fill_rect(
+                    leading_text_background_frame,
+                    Color::new(71, 179, 255),
+                    StrokeThickness::Filled,
+                );
+                // Dark blue outline
+                scroll_view.get_slice().fill_rect(
+                    leading_text_background_frame,
+                    Color::new(53, 133, 189),
+                    StrokeThickness::Width(1),
+                );
+
+                // TODO(PT): Update the cursor...
+                text_view.draw_string_with_font(
+                    leading_text,
+                    &self.font_italic,
+                    font_size,
+                    Color::new(92, 92, 92),
+                );
+                let mut cursor = text_view.cursor_pos();
+                let message_left_side_padding_x = 10;
+                cursor.1.x = start_of_message_content_x + message_left_side_padding_x;
+                text_view.set_cursor_pos(cursor);
+
+                // Draw the background for the message itself
+                // TODO(PT): What about when we need to break to a new line..?
+                let message_line_size = Size::new(
+                    text_view.frame().size.width - start_of_message_content_x,
+                    background_rect_height,
+                );
+                let message_background_frame = Rect::from_parts(
+                    Point::new(start_of_message_content_x, cursor.1.y),
+                    message_line_size,
+                );
+                // Light blue
+                scroll_view.get_slice().fill_rect(
+                    message_background_frame,
+                    Color::new(181, 224, 255),
+                    StrokeThickness::Filled,
+                );
+                /*
+                // Slightly darker outline
+                scroll_view.get_slice().fill_rect(
+                    message_background_frame,
+                    Color::new(150, 186, 212),
+                    StrokeThickness::Width(1),
+                );
+                */
+                text_view.draw_string(&p.message, Color::black());
+                // Advance to the next line
+                let mut updated_cursor = text_view.cursor_pos();
+                updated_cursor.1 = Point::new(
+                    initial_cursor.1.x,
+                    initial_cursor.1.y + background_rect_height,
+                );
+                text_view.set_cursor_pos(updated_cursor);
+            }
             IrcCommand::ReplyWelcome(p) => {
                 self.write_string(&format!("Welcome {}: {}", p.nick, p.message));
             }
@@ -406,6 +500,7 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
     let font_regular = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\BigCaslon.ttf"));
     //let font_arial = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\Chancery.ttf"));
     //let font_italic = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\chancery.ttf"));
+    let font_italic = ttf_renderer::parse(&read_file(bs, "EFI\\Boot\\new_york_italic.ttf"));
     info!("All done!");
 
     let resolution = Size::new(1360, 768);
@@ -443,6 +538,7 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
     let mut app = App::new(
         resolution,
         font_regular,
+        font_italic,
         pointer_resolution,
         irc_client,
     );
