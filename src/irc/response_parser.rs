@@ -243,6 +243,19 @@ impl ModeParams {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct PingParams {
+    server: String,
+}
+
+impl PingParams {
+    fn new(server: &str) -> Self {
+        Self {
+            server: server.to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 #[derive(PartialEq)]
 pub enum IrcCommandName {
@@ -263,6 +276,7 @@ pub enum IrcCommandName {
     ReplyMessageOfTheDayLine,
     ReplyMessageOfTheDayEnd,
     Mode,
+    Ping,
     Join,
     PrivateMessage,
     Notice,
@@ -288,6 +302,7 @@ impl From<&str> for IrcCommandName {
             "372" => Self::ReplyMessageOfTheDayLine,
             "376" => Self::ReplyMessageOfTheDayEnd,
             "MODE" => Self::Mode,
+            "PING" => Self::Ping,
             "JOIN" => Self::Join,
             "PRIVMSG" => Self::PrivateMessage,
             "NOTICE" => Self::Notice,
@@ -315,6 +330,7 @@ pub enum IrcCommand {
     ReplyMessageOfTheDayLine(ReplyWithNickAndMessageParams),
     ReplyMessageOfTheDayEnd(ReplyWithNickAndMessageParams),
     Mode(ModeParams),
+    Ping(PingParams),
     Join(JoinParameters),
     PrivateMessage(PrivateMessageParameters),
 }
@@ -567,6 +583,11 @@ impl ResponseParser {
                     )
                 )
             }
+            IrcCommandName::Ping => {
+                IrcCommand::Ping(
+                    PingParams::new(&Self::parse_trailing_message(&mut tokenizer)),
+                )
+            }
             IrcCommandName::Join => {
                 let channel = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a channel name");
                 if channel.contains(" ") {
@@ -594,7 +615,7 @@ impl ResponseParser {
 #[cfg(test)]
 mod test {
     use alloc::string::ToString;
-    use crate::irc::{ReplyGlobalUsersParams, ReplyListChannelsParams, ReplyWithNickAndMessageParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyLocalUsersParams, ResponseParser, ModeParams};
+    use crate::irc::{ReplyGlobalUsersParams, ReplyListChannelsParams, ReplyWithNickAndMessageParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyLocalUsersParams, ResponseParser, ModeParams, PingParams};
     use crate::irc::response_parser::{Channel, IrcCommand, IrcCommandName, IrcMessage, JoinParameters, Nickname, ReplyISupportParams, ReplyMyInfoParams};
 
     fn parse_line(line: &str) -> IrcMessage {
@@ -909,6 +930,17 @@ mod test {
                 &Nickname::new("phillipt"),
                 "+iw",
             ))
+        )
+    }
+
+    #[test]
+    fn test_parse_ping() {
+        let msg = parse_line("PING :copper.libera.chat\r\n");
+        assert_eq!(msg.origin, None);
+        assert_eq!(msg.command_name, IrcCommandName::Ping);
+        assert_eq!(
+            msg.command,
+            IrcCommand::Ping(PingParams::new("copper.libera.chat"))
         )
     }
 }
