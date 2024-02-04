@@ -282,6 +282,21 @@ impl ErrorParams {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct NoticeParams {
+    target: String,
+    message: String,
+}
+
+impl NoticeParams {
+    fn new(target: &str, message: &str) -> Self {
+        Self {
+            target: target.to_string(),
+            message: message.to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 #[derive(PartialEq)]
 pub enum IrcCommandName {
@@ -305,9 +320,9 @@ pub enum IrcCommandName {
     Ping,
     Quit,
     Error,
+    Notice,
     Join,
     PrivateMessage,
-    Notice,
 }
 
 impl From<&str> for IrcCommandName {
@@ -333,9 +348,9 @@ impl From<&str> for IrcCommandName {
             "PING" => Self::Ping,
             "QUIT" => Self::Quit,
             "ERROR" => Self::Error,
+            "NOTICE" => Self::Notice,
             "JOIN" => Self::Join,
             "PRIVMSG" => Self::PrivateMessage,
-            "NOTICE" => Self::Notice,
             _ => panic!("Unrecognized IRC command {value}")
         }
     }
@@ -363,6 +378,7 @@ pub enum IrcCommand {
     Ping(PingParams),
     Quit(QuitParams),
     Error(ErrorParams),
+    Notice(NoticeParams),
     Join(JoinParameters),
     PrivateMessage(PrivateMessageParameters),
 }
@@ -630,6 +646,14 @@ impl ResponseParser {
                     ErrorParams::new(&Self::parse_trailing_message(&mut tokenizer)),
                 )
             }
+            IrcCommandName::Notice => {
+                IrcCommand::Notice(
+                    NoticeParams::new(
+                        &tokenizer.read_to(' ').expect("Failed to read target"),
+                        &Self::parse_trailing_message(&mut tokenizer),
+                    ),
+                )
+            },
             IrcCommandName::Join => {
                 let channel = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a channel name");
                 if channel.contains(" ") {
@@ -638,9 +662,6 @@ impl ResponseParser {
                 }
                 IrcCommand::Join(JoinParameters::new(&Channel(channel)))
             }
-            IrcCommandName::Notice => {
-                todo!()
-            },
             IrcCommandName::PrivateMessage => todo!(),
         };
 
