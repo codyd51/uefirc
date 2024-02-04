@@ -44,42 +44,12 @@ impl JoinParameters {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ReplyWelcomeParams {
+pub struct ReplyWithNickAndMessageParams {
     pub nick: Nickname,
     pub message: String,
 }
 
-impl ReplyWelcomeParams {
-    fn new(nick: &Nickname, message: &str) -> Self {
-        Self {
-            nick: nick.clone(),
-            message: message.to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ReplyYourHostParams {
-    pub nick: Nickname,
-    pub message: String,
-}
-
-impl ReplyYourHostParams {
-    fn new(nick: &Nickname, message: &str) -> Self {
-        Self {
-            nick: nick.clone(),
-            message: message.to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ReplyCreatedParams {
-    pub nick: Nickname,
-    pub message: String,
-}
-
-impl ReplyCreatedParams {
+impl ReplyWithNickAndMessageParams {
     fn new(nick: &Nickname, message: &str) -> Self {
         Self {
             nick: nick.clone(),
@@ -135,21 +105,6 @@ impl ReplyISupportParams {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ReplyListClientUsersParams {
-    pub nick: Nickname,
-    pub message: String,
-}
-
-impl ReplyListClientUsersParams {
-    fn new(nickname: &Nickname, message: &str) -> Self {
-        Self {
-            nick: nickname.clone(),
-            message: message.to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct ReplyListOperatorUsersParams {
     pub nickname: Nickname,
     pub operator_count: usize,
@@ -195,21 +150,6 @@ impl ReplyListChannelsParams {
         Self {
             nickname: nickname.clone(),
             channel_count,
-            message: message.to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ReplyListUserMeParams {
-    pub nick: Nickname,
-    pub message: String,
-}
-
-impl ReplyListUserMeParams {
-    fn new(nickname: &Nickname, message: &str) -> Self {
-        Self {
-            nick: nickname.clone(),
             message: message.to_string(),
         }
     }
@@ -299,6 +239,7 @@ pub enum IrcCommandName {
     ReplyListUserMe,
     ReplyLocalUsers,
     ReplyGlobalUsers,
+    ReplyConnectionStats,
     Join,
     PrivateMessage,
     Notice,
@@ -319,6 +260,7 @@ impl From<&str> for IrcCommandName {
             "255" => Self::ReplyListUserMe,
             "265" => Self::ReplyLocalUsers,
             "266" => Self::ReplyGlobalUsers,
+            "250" => Self::ReplyConnectionStats,
             "JOIN" => Self::Join,
             "PRIVMSG" => Self::PrivateMessage,
             "NOTICE" => Self::Notice,
@@ -329,18 +271,19 @@ impl From<&str> for IrcCommandName {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrcCommand {
-    ReplyWelcome(ReplyWelcomeParams),
-    ReplyYourHost(ReplyYourHostParams),
-    ReplyCreated(ReplyCreatedParams),
+    ReplyWelcome(ReplyWithNickAndMessageParams),
+    ReplyYourHost(ReplyWithNickAndMessageParams),
+    ReplyCreated(ReplyWithNickAndMessageParams),
     ReplyMyInfo(ReplyMyInfoParams),
     ReplyISupport(ReplyISupportParams),
-    ReplyListClientUsers(ReplyListClientUsersParams),
+    ReplyListClientUsers(ReplyWithNickAndMessageParams),
     ReplyListOperatorUsers(ReplyListOperatorUsersParams),
     ReplyListUnknownUsers(ReplyListUnknownUsersParams),
     ReplyListChannels(ReplyListChannelsParams),
-    ReplyListUserMe(ReplyListUserMeParams),
+    ReplyListUserMe(ReplyWithNickAndMessageParams),
     ReplyLocalUsers(ReplyLocalUsersParams),
     ReplyGlobalUsers(ReplyGlobalUsersParams),
+    ReplyConnectionStats(ReplyWithNickAndMessageParams),
     Join(JoinParameters),
     PrivateMessage(PrivateMessageParameters),
 }
@@ -431,19 +374,28 @@ impl ResponseParser {
 
         let command = match command_name {
             IrcCommandName::ReplyWelcome => {
-                let nick = Self::parse_nickname(&mut tokenizer);
-                let message = Self::parse_trailing_message(&mut tokenizer);
-                IrcCommand::ReplyWelcome(ReplyWelcomeParams::new(&nick, &message))
+                IrcCommand::ReplyWelcome(
+                    ReplyWithNickAndMessageParams::new(
+                        &Self::parse_nickname(&mut tokenizer),
+                        &Self::parse_trailing_message(&mut tokenizer),
+                    ),
+                )
             }
             IrcCommandName::ReplyYourHost => {
-                let nick = Self::parse_nickname(&mut tokenizer);
-                let message = Self::parse_trailing_message(&mut tokenizer);
-                IrcCommand::ReplyYourHost(ReplyYourHostParams::new(&nick, &message))
+                IrcCommand::ReplyYourHost(
+                    ReplyWithNickAndMessageParams::new(
+                        &Self::parse_nickname(&mut tokenizer),
+                        &Self::parse_trailing_message(&mut tokenizer),
+                    ),
+                )
             }
             IrcCommandName::ReplyCreated => {
-                let nick = Self::parse_nickname(&mut tokenizer);
-                let message = Self::parse_trailing_message(&mut tokenizer);
-                IrcCommand::ReplyCreated(ReplyCreatedParams::new(&nick, &message))
+                IrcCommand::ReplyCreated(
+                    ReplyWithNickAndMessageParams::new(
+                        &Self::parse_nickname(&mut tokenizer),
+                        &Self::parse_trailing_message(&mut tokenizer),
+                    ),
+                )
             }
             IrcCommandName::ReplyMyInfo => {
                 let nick = Self::parse_nickname(&mut tokenizer);
@@ -483,10 +435,10 @@ impl ResponseParser {
             }
             IrcCommandName::ReplyListClientUsers => {
                 IrcCommand::ReplyListClientUsers(
-                    ReplyListClientUsersParams::new(
+                    ReplyWithNickAndMessageParams::new(
                         &Self::parse_nickname(&mut tokenizer),
                         &Self::parse_trailing_message(&mut tokenizer),
-                    )
+                    ),
                 )
             }
             IrcCommandName::ReplyListOperatorUsers => {
@@ -518,7 +470,7 @@ impl ResponseParser {
             }
             IrcCommandName::ReplyListUserMe => {
                 IrcCommand::ReplyListUserMe(
-                    ReplyListUserMeParams::new(
+                    ReplyWithNickAndMessageParams::new(
                         &Self::parse_nickname(&mut tokenizer),
                         &Self::parse_trailing_message(&mut tokenizer),
                     )
@@ -540,6 +492,14 @@ impl ResponseParser {
                         &Self::parse_nickname(&mut tokenizer),
                         Self::parse_usize(&mut tokenizer),
                         Self::parse_usize(&mut tokenizer),
+                        &Self::parse_trailing_message(&mut tokenizer),
+                    )
+                )
+            }
+            IrcCommandName::ReplyConnectionStats => {
+                IrcCommand::ReplyConnectionStats(
+                    ReplyWithNickAndMessageParams::new(
+                        &Self::parse_nickname(&mut tokenizer),
                         &Self::parse_trailing_message(&mut tokenizer),
                     )
                 )
@@ -571,9 +531,9 @@ impl ResponseParser {
 #[cfg(test)]
 mod test {
     use alloc::string::ToString;
-    use crate::irc::{ReplyGlobalUsersParams, ReplyListChannelsParams, ReplyListClientUsersParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyListUserMeParams, ReplyLocalUsersParams, ResponseParser};
+    use crate::irc::{ReplyGlobalUsersParams, ReplyListChannelsParams, ReplyWithNickAndMessageParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyLocalUsersParams, ResponseParser};
     use crate::irc::IrcCommandName::{ReplyListOperatorUsers, ReplyListUnknownUsers};
-    use crate::irc::response_parser::{Channel, IrcCommand, IrcCommandName, IrcMessage, JoinParameters, Nickname, ReplyCreatedParams, ReplyISupportParams, ReplyMyInfoParams, ReplyWelcomeParams, ReplyYourHostParams};
+    use crate::irc::response_parser::{Channel, IrcCommand, IrcCommandName, IrcMessage, JoinParameters, Nickname, ReplyISupportParams, ReplyMyInfoParams};
 
     fn parse_line(line: &str) -> IrcMessage {
         let mut p = ResponseParser::new();
@@ -607,7 +567,7 @@ mod test {
         assert_eq!(
             msg.command,
             IrcCommand::ReplyWelcome(
-                ReplyWelcomeParams::new(
+                ReplyWithNickAndMessageParams::new(
                     &Nickname("phill".to_string()),
                     "Welcome to the IRC Network, phill!s@localhost",
                 )
@@ -623,7 +583,7 @@ mod test {
         assert_eq!(
             msg.command,
             IrcCommand::ReplyYourHost(
-                ReplyYourHostParams::new(
+                ReplyWithNickAndMessageParams::new(
                     &Nickname("phill".to_string()),
                     "Your host is irc.example.com, running version fake",
                 )
@@ -639,7 +599,7 @@ mod test {
         assert_eq!(
             msg.command,
             IrcCommand::ReplyCreated(
-                ReplyCreatedParams::new(
+                ReplyWithNickAndMessageParams::new(
                     &Nickname("phill".to_string()),
                     "This server was created on caffeine",
                 )
@@ -722,7 +682,7 @@ mod test {
         assert_eq!(msg.command_name, IrcCommandName::ReplyListClientUsers);
         assert_eq!(
             msg.command,
-            IrcCommand::ReplyListClientUsers(ReplyListClientUsersParams::new(
+            IrcCommand::ReplyListClientUsers(ReplyWithNickAndMessageParams::new(
                 &Nickname::new("phillipt"),
                 "There are 68 users and 33291 invisible on 28 servers",
             ))
@@ -781,7 +741,7 @@ mod test {
         assert_eq!(msg.command_name, IrcCommandName::ReplyListUserMe);
         assert_eq!(
             msg.command,
-            IrcCommand::ReplyListUserMe(ReplyListUserMeParams::new(
+            IrcCommand::ReplyListUserMe(ReplyWithNickAndMessageParams::new(
                 &Nickname::new("phillipt"),
                 "I have 2192 clients and 1 servers",
             ))
@@ -819,4 +779,19 @@ mod test {
             ))
         )
     }
+
+    #[test]
+    fn test_parse_connection_stats() {
+        let msg = parse_line(":copper.libera.chat 250 phillipt :Highest connection count: 2367 (2366 clients) (223598 connections received)\r\n");
+        assert_eq!(msg.origin, Some("copper.libera.chat".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ReplyConnectionStats);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ReplyConnectionStats(ReplyWithNickAndMessageParams::new(
+                &Nickname::new("phillipt"),
+                "Highest connection count: 2367 (2366 clients) (223598 connections received)",
+            ))
+        )
+    }
+
 }
