@@ -269,6 +269,19 @@ impl QuitParams {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ErrorParams {
+    reason: String,
+}
+
+impl ErrorParams {
+    fn new(reason: &str) -> Self {
+        Self {
+            reason: reason.to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 #[derive(PartialEq)]
 pub enum IrcCommandName {
@@ -291,6 +304,7 @@ pub enum IrcCommandName {
     Mode,
     Ping,
     Quit,
+    Error,
     Join,
     PrivateMessage,
     Notice,
@@ -318,6 +332,7 @@ impl From<&str> for IrcCommandName {
             "MODE" => Self::Mode,
             "PING" => Self::Ping,
             "QUIT" => Self::Quit,
+            "ERROR" => Self::Error,
             "JOIN" => Self::Join,
             "PRIVMSG" => Self::PrivateMessage,
             "NOTICE" => Self::Notice,
@@ -347,6 +362,7 @@ pub enum IrcCommand {
     Mode(ModeParams),
     Ping(PingParams),
     Quit(QuitParams),
+    Error(ErrorParams),
     Join(JoinParameters),
     PrivateMessage(PrivateMessageParameters),
 }
@@ -609,6 +625,11 @@ impl ResponseParser {
                     QuitParams::new(&Self::parse_trailing_message(&mut tokenizer)),
                 )
             }
+            IrcCommandName::Error => {
+                IrcCommand::Error(
+                    ErrorParams::new(&Self::parse_trailing_message(&mut tokenizer)),
+                )
+            }
             IrcCommandName::Join => {
                 let channel = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a channel name");
                 if channel.contains(" ") {
@@ -636,7 +657,7 @@ impl ResponseParser {
 #[cfg(test)]
 mod test {
     use alloc::string::ToString;
-    use crate::irc::{ReplyGlobalUsersParams, ReplyListChannelsParams, ReplyWithNickAndMessageParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyLocalUsersParams, ResponseParser, ModeParams, PingParams, QuitParams};
+    use crate::irc::{ReplyGlobalUsersParams, ReplyListChannelsParams, ReplyWithNickAndMessageParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyLocalUsersParams, ResponseParser, ModeParams, PingParams, QuitParams, ErrorParams};
     use crate::irc::response_parser::{Channel, IrcCommand, IrcCommandName, IrcMessage, JoinParameters, Nickname, ReplyISupportParams, ReplyMyInfoParams};
 
     fn parse_line(line: &str) -> IrcMessage {
@@ -973,6 +994,17 @@ mod test {
         assert_eq!(
             msg.command,
             IrcCommand::Quit(QuitParams::new("Ping timeout: 264 seconds"))
+        )
+    }
+
+    #[test]
+    fn test_parse_error() {
+        let msg = parse_line("ERROR :Closing Link: 86.11.226.171 (Ping timeout: 264 seconds)\r\n");
+        assert_eq!(msg.origin, None);
+        assert_eq!(msg.command_name, IrcCommandName::Error);
+        assert_eq!(
+            msg.command,
+            IrcCommand::Error(ErrorParams::new("Closing Link: 86.11.226.171 (Ping timeout: 264 seconds)"))
         )
     }
 }
