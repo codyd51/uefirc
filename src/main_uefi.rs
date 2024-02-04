@@ -76,6 +76,7 @@ struct App<'a> {
     pointer_resolution: Point,
     is_left_click_down: RefCell<bool>,
     response_parser: RefCell<ResponseParser>,
+    is_user_manually_scrolling: RefCell<bool>,
 }
 
 impl<'a> App<'a> {
@@ -182,6 +183,7 @@ impl<'a> App<'a> {
                 pointer_resolution,
                 is_left_click_down: RefCell::new(false),
                 response_parser: RefCell::new(ResponseParser::new()),
+                is_user_manually_scrolling: RefCell::new(false),
             }
         );
 
@@ -217,6 +219,7 @@ impl<'a> App<'a> {
             scroll_pos.x,
             scroll_pos.y - 30,
         );
+        *self.is_user_manually_scrolling.borrow_mut() = true;
     }
 
     fn scroll_down(&self) {
@@ -225,6 +228,8 @@ impl<'a> App<'a> {
             scroll_pos.x,
             scroll_pos.y + 30,
         );
+        // TODO(PT): Unset this if we've scrolled to the bottom
+        *self.is_user_manually_scrolling.borrow_mut() = true;
     }
 
     fn write_string(&self, s: &str) {
@@ -555,6 +560,16 @@ impl<'a> App<'a> {
         while let Some(msg) = response_parser.parse_next_line() {
             self.render_message(msg);
         }
+
+        // Ensure we always scroll to see the last line that was output
+        // Unless the user is manually controlling our scroll position
+        if !self.is_user_manually_scrolling() {
+            self.scroll_to_last_visible_line();
+        }
+    }
+
+    fn is_user_manually_scrolling(&self) -> bool {
+        *self.is_user_manually_scrolling.borrow()
     }
 }
 
