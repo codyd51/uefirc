@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 use alloc::rc::Rc;
-use agx_definitions::{Color, LikeLayerSlice, Rect, RectInsets, Size, Point};
+use agx_definitions::{Color, LikeLayerSlice, Rect, RectInsets, Size, Point, PixelByteLayout};
 use libgui::bordered::Bordered;
 use libgui::text_view::TextView;
 use agx_definitions::{Drawable, NestedLayerSlice};
@@ -30,6 +30,8 @@ impl ContentView {
             font_size,
             RectInsets::new(2, 2, 2, 2),
             sizer,
+            // PT: My emulated UEFI environment uses BGRA
+            PixelByteLayout::BGRA,
         );
 
         Rc::new(

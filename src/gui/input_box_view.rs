@@ -1,7 +1,7 @@
 
 use alloc::boxed::Box;
 use alloc::rc::Rc;
-use agx_definitions::{Color, LikeLayerSlice, Rect, RectInsets, Size, Point};
+use agx_definitions::{Color, LikeLayerSlice, Rect, RectInsets, Size, Point, PixelByteLayout};
 use libgui::bordered::Bordered;
 use libgui::text_view::TextView;
 use agx_definitions::{Drawable, NestedLayerSlice};
@@ -31,6 +31,8 @@ impl InputBoxView {
             font_size,
             RectInsets::new(80, 2, 2, 2),
             sizer,
+            // PT: My UEFI environment uses BGRA
+            PixelByteLayout::BGRA,
         );
 
         let _self = Rc::new(
