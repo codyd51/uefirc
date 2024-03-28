@@ -248,6 +248,12 @@ impl<'a> App<'a> {
         scroll_offset
     }
 
+    fn is_scrolled_to_bottom(&self) -> bool {
+        // PT: Matches the logic in scroll_to_last_visible_line()
+        let cursor_pos = self.content_view.view.cursor_pos.borrow().1;
+        let viewport_height = self.content_view.frame().height();
+        let scroll_offset = self.content_view.view.view.layer.scroll_offset();
+        scroll_offset.y >= cursor_pos.y - viewport_height + 30
     }
 
     fn write_string(&self, s: &str) {
@@ -691,9 +697,13 @@ impl<'a> App<'a> {
         response_parser.ingest(&recv_data);
 
         while let Some(msg) = response_parser.parse_next_line() {
+            // If the user was currently scrolled to the bottom, scroll to keep them at the bottom
+            let was_at_scroll_bottom = self.is_scrolled_to_bottom();
             self.render_message(msg);
+            if was_at_scroll_bottom {
+                self.scroll_to_last_visible_line();
+            }
         }
-    }
     }
 }
 
@@ -761,9 +771,9 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
     //app.handle_recv_data(&("This is a test of a bnch of text that gets sent over the network pipe and sent to the client where it is then rendered and rendered again perhaps on a new line considering its length").as_bytes());
 
     loop {
-        app.step();
         app.handle_keyboard_updates(&mut system_table);
         app.handle_mouse_updates(&mut pointer, pointer_resolution);
+        app.step();
         app.draw_and_push_to_display(&mut graphics_protocol);
     }
 }
