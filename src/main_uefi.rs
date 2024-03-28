@@ -160,7 +160,7 @@ impl<'a> App<'a> {
 
         let send_button = Button::new(
             "Send",
-            font_regular.clone(),
+            Some(font_regular.clone()),
             move |v, s| send_button_sizer(s),
         );
 
@@ -327,7 +327,12 @@ impl<'a> App<'a> {
             StrokeThickness::Width(1),
         );
         */
-        text_view.draw_string(attributes.main_text, Color::black());
+        text_view.draw_string_with_font(
+            attributes.main_text,
+            &self.font_regular,
+            font_size,
+            attributes.main_text_color,
+        );
         // Advance to the next line
         let mut updated_cursor = text_view.cursor_pos();
         updated_cursor.1 = Point::new(
