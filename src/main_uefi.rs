@@ -516,7 +516,7 @@ impl<'a> App<'a> {
             let input_drawn_characters = input_view.view.view.text.borrow();
             input_drawn_characters.iter().map(|c| c.value).collect::<String>()
         };
-        irc_client.send_message_to_user("codyd51", &input_str);
+        irc_client.send_line_command(&input_str);
         self.input_box_view.view.clear();
     }
 
