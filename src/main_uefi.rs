@@ -609,11 +609,14 @@ impl<'a> App<'a> {
         core::mem::forget(buf_as_blt_pixel);
     }
 
-    fn handle_keyboard_updates(&self, system_table: &mut SystemTable<Boot>) {
+    fn handle_next_key_press(&self, system_table: &mut SystemTable<Boot>) -> bool {
         let key_held_on_this_iteration = {
             let maybe_key = system_table.stdin().read_key().expect("Failed to poll for a key");
             match maybe_key {
-                None => None,
+                None => {
+                    // No keypress available
+                    return false;
+                },
                 Some(key) => {
                     let key_as_u16 = match key {
                         Key::Special(scancode) => {
@@ -654,6 +657,15 @@ impl<'a> App<'a> {
             }
             // And update our state to track that this key is currently held
             *self.currently_held_key.borrow_mut() = key_held_on_this_iteration;
+        }
+        true
+    }
+
+    fn handle_keyboard_updates(&self, system_table: &mut SystemTable<Boot>) {
+        loop {
+            if !self.handle_next_key_press(system_table) {
+                break;
+            }
         }
     }
 
