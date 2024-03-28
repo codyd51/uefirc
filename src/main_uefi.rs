@@ -640,7 +640,7 @@ impl<'a> App<'a> {
                 // We just entered a left click
                 self.window.handle_mouse_left_click_down(updated_current_pointer_pos);
             }
-            else {
+            else if orig_is_left_click_down && !is_left_click_down_now {
                 // We just exited a left click
                 self.window.handle_mouse_left_click_up(updated_current_pointer_pos);
             }
