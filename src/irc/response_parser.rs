@@ -357,6 +357,8 @@ pub enum IrcCommandName {
     Notice,
     Join,
     PrivateMessage,
+    // PT: 'Base case' when the server sends something unrecognized
+    Unparseable,
 }
 
 impl From<&str> for IrcCommandName {
@@ -387,7 +389,7 @@ impl From<&str> for IrcCommandName {
             "NOTICE" => Self::Notice,
             "JOIN" => Self::Join,
             "PRIVMSG" => Self::PrivateMessage,
-            _ => panic!("Unrecognized IRC command {value}")
+            _ => Self::Unparseable,
         }
     }
 }
@@ -419,6 +421,7 @@ pub enum IrcCommand {
     Notice(NoticeParams),
     Join(JoinParameters),
     PrivateMessage(PrivateMessageParameters),
+    Unparseable(String),
 }
 
 #[derive(Debug)]
@@ -722,6 +725,7 @@ impl ResponseParser {
                 IrcCommand::Join(JoinParameters::new(&Channel(channel)))
             }
             IrcCommandName::PrivateMessage => todo!(),
+            _ => IrcCommand::Unparseable(line),
         };
 
         Some(
