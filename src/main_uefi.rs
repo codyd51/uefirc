@@ -631,32 +631,31 @@ impl<'a> App<'a> {
             }
         };
 
-        // Are we changing state in any way?
         let currently_held_key = *self.currently_held_key.borrow();
-        if key_held_on_this_iteration != currently_held_key {
-            // Are we switching away from a held key?
-            if currently_held_key.is_some() {
-                self.window.handle_key_released(currently_held_key.unwrap());
+        // Are we switching away from a held key?
+        if currently_held_key.is_some() {
+            self.window.handle_key_released(currently_held_key.unwrap());
+        }
+        if key_held_on_this_iteration.is_some() {
+            // Hack to support scrolling the main content view up and down.
+            // Directly eat arrow key inputs, instead of forwarding them to libgui.
+            // UEFI key map for arrow keys:
+            // Up: 1
+            // Down: 2
+            // Right: 3
+            // Left: 4
+            if key_held_on_this_iteration.unwrap() == KeyCode(1) {
+                self.scroll_up();
             }
-            if key_held_on_this_iteration.is_some() {
+            else if key_held_on_this_iteration.unwrap() == KeyCode(2) {
+                self.scroll_down();
+            }
+            else {
                 // Inform the window that a new key is held
                 self.window.handle_key_pressed(key_held_on_this_iteration.unwrap());
-
-                // Hack to support scrolling the main content view up and down
-                // UEFI key map for arrow keys:
-                // Up: 1
-                // Down: 2
-                // Right: 3
-                // Left: 4
-                if key_held_on_this_iteration.unwrap() == KeyCode(1) {
-                    self.scroll_up();
-                }
-                else if key_held_on_this_iteration.unwrap() == KeyCode(2) {
-                    self.scroll_down();
-                }
+                // And update our state to track that this key is currently held
+                self.currently_held_key.replace(key_held_on_this_iteration);
             }
-            // And update our state to track that this key is currently held
-            *self.currently_held_key.borrow_mut() = key_held_on_this_iteration;
         }
         true
     }
