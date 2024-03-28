@@ -374,13 +374,58 @@ impl<'a> App<'a> {
         self.render_structured_message_with_attributes(
             RenderStructuredMessageAttributes::new(
                 leading_text,
-                Color::new(92, 92, 92),
+                Color::new(40, 40, 40),
                 Color::new(71, 179, 255),
                 Color::new(53, 133, 189),
                 message_text,
                 Color::black(),
                 Color::new(181, 224, 255),
                 Color::new(150, 186, 212),
+            )
+        )
+    }
+
+    fn render_unparseable_message(&self, message_text: &str) {
+        self.render_structured_message_with_attributes(
+            RenderStructuredMessageAttributes::new(
+                "Unparseable",
+                Color::new(255, 0, 0),
+                Color::new(255, 253, 237),
+                Color::new(191, 190, 176),
+                message_text,
+                Color::black(),
+                Color::new(255, 248, 156),
+                Color::new(181, 176, 110),
+            )
+        )
+    }
+
+    fn render_error(&self, message_text: &str) {
+        self.render_structured_message_with_attributes(
+            RenderStructuredMessageAttributes::new(
+                "Error",
+                Color::new(255, 0, 0),
+                Color::new(217, 217, 217),
+                Color::new(180, 180, 180),
+                message_text,
+                Color::new(186, 26, 26),
+                Color::new(255, 207, 207),
+                Color::new(184, 149, 149),
+            )
+        )
+    }
+
+    fn render_noninteractive_server_prompt(&self, message_text: &str) {
+        self.render_structured_message_with_attributes(
+            RenderStructuredMessageAttributes::new(
+                message_text,
+                Color::new(54, 54, 54),
+                Color::new(217, 217, 217),
+                Color::new(180, 180, 180),
+                "",
+                Color::black(),
+                Color::new(207, 207, 207),
+                Color::new(207, 207, 207),
             )
         )
     }
@@ -393,7 +438,7 @@ impl<'a> App<'a> {
         self.render_structured_message_with_attributes(
             RenderStructuredMessageAttributes::new(
                 leading_text,
-                Color::new(92, 92, 92),
+                Color::new(220, 220, 220),
                 Color::new(255, 143, 38),
                 Color::new(207, 116, 31),
                 message_text,
@@ -412,7 +457,7 @@ impl<'a> App<'a> {
         self.render_structured_message_with_attributes(
             RenderStructuredMessageAttributes::new(
                 leading_text,
-                Color::new(92, 92, 92),
+                Color::new(220, 220, 220),
                 Color::new(255, 143, 38),
                 Color::new(207, 116, 31),
                 message_text,
@@ -497,6 +542,16 @@ impl<'a> App<'a> {
             }
             IrcCommand::ReplyISupport(p) => {
                 //self.write_string(&format!("ISupport {}: {:?}", p.nick, p.entries));
+            }
+            IrcCommand::Unparseable(msg) => {
+                self.render_unparseable_message(&msg);
+            }
+            IrcCommand::Ping(_) => {
+                self.render_noninteractive_server_prompt("→ Ping");
+                self.render_noninteractive_server_prompt("← Pong");
+            }
+            IrcCommand::ErrorUnknownCommand(p) => {
+                self.render_error(&format!("{}: {}", p.message, p.command));
             }
             unknown => {
                 self.render_structured_server_notice("Unknown", &format!("{unknown:?}"));
