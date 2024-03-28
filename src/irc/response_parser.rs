@@ -59,6 +59,21 @@ impl ReplyWithNickAndMessageParams {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct DescriptorAndReasonParams {
+    pub descriptor: String,
+    pub reason: String,
+}
+
+impl DescriptorAndReasonParams {
+    fn new(descriptor: &str, reason: &str) -> Self {
+        Self {
+            descriptor: descriptor.to_string(),
+            reason: reason.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReplyMyInfoParams {
     pub nick: Nickname,
     pub server_name: String,
@@ -316,6 +331,7 @@ pub enum IrcCommandName {
     ReplyMessageOfTheDayStart,
     ReplyMessageOfTheDayLine,
     ReplyMessageOfTheDayEnd,
+    ErrorNoSuchNick,
     Mode,
     Ping,
     Quit,
@@ -344,6 +360,7 @@ impl From<&str> for IrcCommandName {
             "375" => Self::ReplyMessageOfTheDayStart,
             "372" => Self::ReplyMessageOfTheDayLine,
             "376" => Self::ReplyMessageOfTheDayEnd,
+            "401" => Self::ErrorNoSuchNick,
             "MODE" => Self::Mode,
             "PING" => Self::Ping,
             "QUIT" => Self::Quit,
@@ -374,6 +391,7 @@ pub enum IrcCommand {
     ReplyMessageOfTheDayStart(ReplyWithNickAndMessageParams),
     ReplyMessageOfTheDayLine(ReplyWithNickAndMessageParams),
     ReplyMessageOfTheDayEnd(ReplyWithNickAndMessageParams),
+    ErrorNoSuchNick(DescriptorAndReasonParams),
     Mode(ModeParams),
     Ping(PingParams),
     Quit(QuitParams),
@@ -623,6 +641,14 @@ impl ResponseParser {
                     )
                 )
             }
+            IrcCommandName::ErrorNoSuchNick => {
+                IrcCommand::ErrorNoSuchNick(
+                    DescriptorAndReasonParams::new(
+                        &tokenizer.read_to_str(" :").expect("Failed to read descriptor"),
+                        &tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a message"),
+                    )
+                )
+            }
             IrcCommandName::Mode => {
                 IrcCommand::Mode(
                     ModeParams::new(
@@ -678,7 +704,7 @@ impl ResponseParser {
 #[cfg(test)]
 mod test {
     use alloc::string::ToString;
-    use crate::irc::{ReplyGlobalUsersParams, ReplyListChannelsParams, ReplyWithNickAndMessageParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyLocalUsersParams, ResponseParser, ModeParams, PingParams, QuitParams, ErrorParams};
+    use crate::irc::{ReplyGlobalUsersParams, ReplyListChannelsParams, ReplyWithNickAndMessageParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyLocalUsersParams, ResponseParser, ModeParams, PingParams, QuitParams, ErrorParams, DescriptorAndReasonParams, ErrorUnknownCommandParams};
     use crate::irc::response_parser::{Channel, IrcCommand, IrcCommandName, IrcMessage, JoinParameters, Nickname, ReplyISupportParams, ReplyMyInfoParams};
 
     fn parse_line(line: &str) -> IrcMessage {
@@ -1028,4 +1054,16 @@ mod test {
             IrcCommand::Error(ErrorParams::new("Closing Link: 86.11.226.171 (Ping timeout: 264 seconds)"))
         )
     }
+
+    #[test]
+    fn test_parse_error_no_such_nick() {
+        let msg = parse_line(":copper.libera.chat 401 user msg :No such nick/channel\r\n");
+        assert_eq!(msg.origin, Some("copper.libera.chat".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ErrorNoSuchNick);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ErrorNoSuchNick(DescriptorAndReasonParams::new("user msg", "No such nick/channel"))
+        )
+    }
+
 }
