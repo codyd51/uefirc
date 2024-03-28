@@ -26,8 +26,7 @@ pub fn main() -> Result<(), Box<dyn error::Error>> {
         }
     );
     Rc::clone(&window).add_component(Rc::clone(&main_view) as Rc<dyn UIElement>);
-
-     */
+    */
 
     window.enter_event_loop();
     Ok(())

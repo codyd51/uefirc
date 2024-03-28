@@ -6,6 +6,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 use core::cmp::{max, min};
+use core::mem::zeroed;
 use agx_definitions::{Color, Drawable, NestedLayerSlice, Point, Rect, StrokeThickness};
 #[allow(dead_code)]
 
@@ -20,6 +21,7 @@ use uefi::proto::console::gop::{BltOp, BltPixel, BltRegion, GraphicsOutput};
 use uefi::proto::console::pointer::Pointer;
 use uefi::proto::console::text::Key;
 use uefi::table::boot::ScopedProtocol;
+use uefi_services::println;
 use crate::app::IrcClient;
 use crate::fs::read_file;
 use crate::gui::{ContentView, InputBoxView, TitleView};
@@ -76,7 +78,6 @@ struct App<'a> {
     pointer_resolution: Point,
     is_left_click_down: RefCell<bool>,
     response_parser: RefCell<ResponseParser>,
-    is_user_manually_scrolling: RefCell<bool>,
 }
 
 impl<'a> App<'a> {
@@ -183,7 +184,6 @@ impl<'a> App<'a> {
                 pointer_resolution,
                 is_left_click_down: RefCell::new(false),
                 response_parser: RefCell::new(ResponseParser::new()),
-                is_user_manually_scrolling: RefCell::new(false),
             }
         );
 
@@ -209,7 +209,7 @@ impl<'a> App<'a> {
         let viewport_height = self.content_view.frame().height();
         *self.content_view.view.view.layer.scroll_offset.borrow_mut() = Point::new(
             0,
-            cursor_pos.y - viewport_height + 40,
+            cursor_pos.y - viewport_height + 30,
         );
     }
 
@@ -250,7 +250,7 @@ impl<'a> App<'a> {
         let scroll_view = &self.content_view.view.view;
 
         // TODO(PT): Share this with the content view?
-        let font_size = Size::new(20, 20);
+        let font_size = Size::new(24, 24);
         let leading_right_side_padding_px = 10;
         let rendered_leading_text_size = rendered_string_size(
             attributes.leading_text,
@@ -670,16 +670,7 @@ impl<'a> App<'a> {
         while let Some(msg) = response_parser.parse_next_line() {
             self.render_message(msg);
         }
-
-        // Ensure we always scroll to see the last line that was output
-        // Unless the user is manually controlling our scroll position
-        if !self.is_user_manually_scrolling() {
-            self.scroll_to_last_visible_line();
-        }
     }
-
-    fn is_user_manually_scrolling(&self) -> bool {
-        *self.is_user_manually_scrolling.borrow()
     }
 }
 
