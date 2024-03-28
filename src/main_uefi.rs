@@ -751,8 +751,6 @@ impl<'a> App<'a> {
         self.render_window_to_display(graphics_protocol);
     }
 
-    // TODO(PT): To make the UI more responsive, only draw 1 line of text per refresh in the startup message?
-
     fn step(&self) {
         let mut irc_client = self.irc_client.borrow_mut();
         irc_client.step();
@@ -762,7 +760,9 @@ impl<'a> App<'a> {
         let mut response_parser = self.response_parser.borrow_mut();
         response_parser.ingest(&recv_data);
 
-        while let Some(msg) = response_parser.parse_next_line() {
+        // To make the UI a bit more responsive while drawing a large influx of messages, only
+        // draw one new message per event loop iteration
+        if let Some(msg) = response_parser.parse_next_line() {
             // If the user was currently scrolled to the bottom, scroll to keep them at the bottom
             let was_at_scroll_bottom = self.is_scrolled_to_bottom();
             self.render_message(msg);
