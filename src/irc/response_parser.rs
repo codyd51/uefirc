@@ -74,6 +74,23 @@ impl DescriptorAndReasonParams {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ErrorUnknownCommandParams {
+    pub nick: Nickname,
+    pub command: String,
+    pub message: String,
+}
+
+impl ErrorUnknownCommandParams {
+    fn new(nick: Nickname, command: &str, message: &str) -> Self {
+        Self {
+            nick,
+            command: command.to_string(),
+            message: message.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReplyMyInfoParams {
     pub nick: Nickname,
     pub server_name: String,
@@ -332,6 +349,7 @@ pub enum IrcCommandName {
     ReplyMessageOfTheDayLine,
     ReplyMessageOfTheDayEnd,
     ErrorNoSuchNick,
+    ErrorUnknownCommand,
     Mode,
     Ping,
     Quit,
@@ -361,6 +379,7 @@ impl From<&str> for IrcCommandName {
             "372" => Self::ReplyMessageOfTheDayLine,
             "376" => Self::ReplyMessageOfTheDayEnd,
             "401" => Self::ErrorNoSuchNick,
+            "421" => Self::ErrorUnknownCommand,
             "MODE" => Self::Mode,
             "PING" => Self::Ping,
             "QUIT" => Self::Quit,
@@ -392,6 +411,7 @@ pub enum IrcCommand {
     ReplyMessageOfTheDayLine(ReplyWithNickAndMessageParams),
     ReplyMessageOfTheDayEnd(ReplyWithNickAndMessageParams),
     ErrorNoSuchNick(DescriptorAndReasonParams),
+    ErrorUnknownCommand(ErrorUnknownCommandParams),
     Mode(ModeParams),
     Ping(PingParams),
     Quit(QuitParams),
@@ -454,6 +474,10 @@ impl ResponseParser {
 
     fn parse_nickname(tokenizer: &mut Tokenizer) -> Nickname {
         Nickname(tokenizer.read_to(' ').expect("Failed to read nick"))
+    }
+
+    fn parse_word(tokenizer: &mut Tokenizer) -> String {
+        tokenizer.read_to(' ').expect("Failed to read word")
     }
 
     fn parse_trailing_message(tokenizer: &mut Tokenizer) -> String {
@@ -646,6 +670,15 @@ impl ResponseParser {
                     DescriptorAndReasonParams::new(
                         &tokenizer.read_to_str(" :").expect("Failed to read descriptor"),
                         &tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a message"),
+                    )
+                )
+            }
+            IrcCommandName::ErrorUnknownCommand => {
+                IrcCommand::ErrorUnknownCommand(
+                    ErrorUnknownCommandParams::new(
+                        Self::parse_nickname(&mut tokenizer),
+                        &Self::parse_word(&mut tokenizer),
+                        &Self::parse_trailing_message(&mut tokenizer),
                     )
                 )
             }
@@ -1066,4 +1099,14 @@ mod test {
         )
     }
 
+    #[test]
+    fn test_parse_error_unknown_command() {
+        let msg = parse_line(":zirconium.libera.chat 421 test CMD :Unknown command\r\n");
+        assert_eq!(msg.origin, Some("zirconium.libera.chat".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ErrorUnknownCommand);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ErrorUnknownCommand(ErrorUnknownCommandParams::new(Nickname("test".to_string()), "CMD", "Unknown command"))
+        )
+    }
 }
