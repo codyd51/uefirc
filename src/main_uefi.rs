@@ -214,22 +214,40 @@ impl<'a> App<'a> {
     }
 
     fn scroll_up(&self) {
-        let scroll_pos = *self.content_view.view.view.layer.scroll_offset.borrow();
-        *self.content_view.view.view.layer.scroll_offset.borrow_mut() = Point::new(
+        let scroll_pos = self.content_view.view.view.layer.scroll_offset();
+        let new_scroll_offset = Point::new(
             scroll_pos.x,
-            scroll_pos.y - 30,
+            scroll_pos.y - 100,
         );
-        *self.is_user_manually_scrolling.borrow_mut() = true;
+        let bound_scroll_offset = self.bind_scroll_offset_to_scrollable_region(new_scroll_offset);
+        self.content_view.view.view.layer.set_scroll_offset(bound_scroll_offset);
     }
 
     fn scroll_down(&self) {
-        let scroll_pos = *self.content_view.view.view.layer.scroll_offset.borrow();
-        *self.content_view.view.view.layer.scroll_offset.borrow_mut() = Point::new(
+        let scroll_pos = self.content_view.view.view.layer.scroll_offset();
+        let new_scroll_offset = Point::new(
             scroll_pos.x,
-            scroll_pos.y + 30,
+            scroll_pos.y + 100,
         );
-        // TODO(PT): Unset this if we've scrolled to the bottom
-        *self.is_user_manually_scrolling.borrow_mut() = true;
+        let bound_scroll_offset = self.bind_scroll_offset_to_scrollable_region(new_scroll_offset);
+        self.content_view.view.view.layer.set_scroll_offset(bound_scroll_offset);
+    }
+
+    fn scrollable_region_size(&self) -> Size {
+        self.content_view.view.view.scrollable_region_size()
+    }
+
+    fn bind_scroll_offset_to_scrollable_region(&self, scroll_offset: Point) -> Point {
+        /*
+        let scrollable_region = self.scrollable_region_size();
+        Point::new(
+            scroll_offset.x.max(0).min(scrollable_region.width),
+            scroll_offset.y.max(0).min(scrollable_region.height),
+        )
+        */
+        scroll_offset
+    }
+
     }
 
     fn write_string(&self, s: &str) {
