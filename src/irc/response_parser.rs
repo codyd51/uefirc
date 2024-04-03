@@ -214,16 +214,16 @@ impl ReplyLocalUsersParams {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReplyGlobalUsersParams {
     pub nick: Nickname,
-    pub current_count: usize,
-    pub max_count: usize,
+    pub current_count: Option<usize>,
+    pub max_count: Option<usize>,
     pub message: String,
 }
 
 impl ReplyGlobalUsersParams {
     fn new(
         nickname: &Nickname,
-        current_count: usize,
-        max_count: usize,
+        current_count: Option<usize>,
+        max_count: Option<usize>,
         message: &str,
     ) -> Self {
         Self {
@@ -640,11 +640,25 @@ impl ResponseParser {
                 )
             }
             IrcCommandName::ReplyGlobalUsers => {
+                // PT: Some servers (like irc.libera.chat) send the counts
+                // prior to the trailing message.
+                // Other servers (like irc.oftc.net) just send the trailing message.
+                ":coulomb.oftc.net 266 phillipt :Current global users: 31420  Max: 32418";
+                let nick = Self::parse_nickname(&mut tokenizer);
+                let (current_count, max_count) = match tokenizer.peek() {
+                    Some(':') => (None, None),
+                    _ => {
+                        (
+                            Some(Self::parse_usize(&mut tokenizer)),
+                            Some(Self::parse_usize(&mut tokenizer)),
+                        )
+                    }
+                };
                 IrcCommand::ReplyGlobalUsers(
                     ReplyGlobalUsersParams::new(
-                        &Self::parse_nickname(&mut tokenizer),
-                        Self::parse_usize(&mut tokenizer),
-                        Self::parse_usize(&mut tokenizer),
+                        &nick,
+                        current_count,
+                        max_count,
                         &Self::parse_trailing_message(&mut tokenizer),
                     )
                 )
@@ -1011,9 +1025,25 @@ mod test {
             msg.command,
             IrcCommand::ReplyGlobalUsers(ReplyGlobalUsersParams::new(
                 &Nickname::new("phillipt"),
-                33359,
-                36895,
+                Some(33359),
+                Some(36895),
                 "Current global users 33359, max 36895",
+            ))
+        )
+    }
+
+    #[test]
+    fn test_parse_global_users2() {
+        let msg = parse_line(":coulomb.oftc.net 266 phillipt :Current global users: 31420  Max: 32418\r\n");
+        assert_eq!(msg.origin, Some("coulomb.oftc.net".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ReplyGlobalUsers);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ReplyGlobalUsers(ReplyGlobalUsersParams::new(
+                &Nickname::new("phillipt"),
+                None,
+                None,
+                "Current global users: 31420  Max: 32418",
             ))
         )
     }
