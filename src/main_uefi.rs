@@ -415,6 +415,21 @@ impl<'a> App<'a> {
         )
     }
 
+    fn render_message_from_user(&self, message_text: &str) {
+        self.render_structured_message_with_attributes(
+            RenderStructuredMessageAttributes::new(
+                "---->",
+                Color::black(),
+                Color::new(80, 224, 250),
+                Color::new(106, 150, 158),
+                message_text,
+                Color::black(),
+                Color::new(252, 199, 222),
+                Color::new(252, 199, 222),
+            )
+        )
+    }
+
     fn render_noninteractive_server_prompt(&self, message_text: &str) {
         self.render_structured_message_with_attributes(
             RenderStructuredMessageAttributes::new(
@@ -573,6 +588,8 @@ impl<'a> App<'a> {
         };
         irc_client.send_line_command(&input_str);
         self.input_box_view.view.clear();
+        // Draw the message we just sent
+        self.render_message_from_user(&input_str);
     }
 
     fn render_window_to_display(

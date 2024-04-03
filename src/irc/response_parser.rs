@@ -23,16 +23,16 @@ impl Display for Nickname {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct User(String);
+pub struct User(pub String);
 #[derive(Debug, Clone, PartialEq)]
-pub struct Channel(String);
+pub struct Channel(pub String);
 #[derive(Debug, Clone, PartialEq)]
 pub struct UserOrChannel(String);
 
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct JoinParameters {
-    channel: Channel,
+    pub channel: Channel,
 }
 
 impl JoinParameters {
@@ -237,9 +237,9 @@ impl ReplyGlobalUsersParams {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PrivateMessageParameters {
-    sender: User,
+    pub sender: User,
     recipient: UserOrChannel,
-    message: String,
+    pub message: String,
 }
 
 impl PrivateMessageParameters {
