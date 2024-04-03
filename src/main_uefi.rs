@@ -415,6 +415,36 @@ impl<'a> App<'a> {
         )
     }
 
+    fn render_private_message(&self, leading_str: &str, message: &str) {
+        self.render_structured_message_with_attributes(
+            RenderStructuredMessageAttributes::new(
+                leading_str,
+                Color::new(0, 0, 0),
+                Color::new(66, 222, 42),
+                Color::new(47, 158, 30),
+                message,
+                Color::black(),
+                Color::new(196, 242, 189),
+                Color::new(140, 173, 135),
+            )
+        )
+    }
+
+    fn render_join_event(&self, message_text: &str) {
+        self.render_structured_message_with_attributes(
+            RenderStructuredMessageAttributes::new(
+                "Join",
+                Color::black(),
+                Color::new(221, 227, 48),
+                Color::new(134, 138, 29),
+                message_text,
+                Color::black(),
+                Color::new(232, 235, 150),
+                Color::new(181, 184, 116),
+            )
+        )
+    }
+
     fn render_message_from_user(&self, message_text: &str) {
         self.render_structured_message_with_attributes(
             RenderStructuredMessageAttributes::new(
@@ -453,7 +483,7 @@ impl<'a> App<'a> {
         self.render_structured_message_with_attributes(
             RenderStructuredMessageAttributes::new(
                 leading_text,
-                Color::new(220, 220, 220),
+                Color::new(20, 20, 20),
                 Color::new(255, 143, 38),
                 Color::new(207, 116, 31),
                 message_text,
@@ -472,7 +502,7 @@ impl<'a> App<'a> {
         self.render_structured_message_with_attributes(
             RenderStructuredMessageAttributes::new(
                 leading_text,
-                Color::new(220, 220, 220),
+                Color::black(),
                 Color::new(255, 143, 38),
                 Color::new(207, 116, 31),
                 message_text,
@@ -563,10 +593,17 @@ impl<'a> App<'a> {
             }
             IrcCommand::Ping(_) => {
                 self.render_noninteractive_server_prompt("→ Ping");
+                // TODO(PT): Send real pongs
                 self.render_noninteractive_server_prompt("← Pong");
             }
             IrcCommand::ErrorUnknownCommand(p) => {
                 self.render_error(&format!("{}: {}", p.message, p.command));
+            }
+            IrcCommand::PrivateMessage(p) => {
+                self.render_private_message(&format!("PM from {}", p.sender.0), &p.message);
+            }
+            IrcCommand::Join(p) => {
+                self.render_join_event(&format!("Joined {}", p.channel.0));
             }
             unknown => {
                 self.render_structured_server_notice("Unknown", &format!("{unknown:?}"));
