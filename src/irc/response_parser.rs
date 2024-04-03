@@ -643,7 +643,6 @@ impl ResponseParser {
                 // PT: Some servers (like irc.libera.chat) send the counts
                 // prior to the trailing message.
                 // Other servers (like irc.oftc.net) just send the trailing message.
-                ":coulomb.oftc.net 266 phillipt :Current global users: 31420  Max: 32418";
                 let nick = Self::parse_nickname(&mut tokenizer);
                 let (current_count, max_count) = match tokenizer.peek() {
                     Some(':') => (None, None),
@@ -751,7 +750,21 @@ impl ResponseParser {
                 }
                 IrcCommand::Join(JoinParameters::new(&Channel(channel)))
             }
-            IrcCommandName::PrivateMessage => todo!(),
+            IrcCommandName::PrivateMessage => {
+                let source = {
+                    let origin = origin.as_ref().unwrap();
+                    origin[..origin.find('!').unwrap()].to_string()
+                };
+                let dest = UserOrChannel(tokenizer.read_to(' ').expect("Failed to read recipient"));
+                let message = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read message");
+                IrcCommand::PrivateMessage(
+                    PrivateMessageParameters::new(
+                        &User(source),
+                        &dest,
+                        &message,
+                    )
+                )
+            },
             _ => IrcCommand::Unparseable(line),
         };
 
@@ -768,8 +781,8 @@ impl ResponseParser {
 #[cfg(test)]
 mod test {
     use alloc::string::ToString;
-    use crate::irc::{ReplyGlobalUsersParams, ReplyListChannelsParams, ReplyWithNickAndMessageParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyLocalUsersParams, ResponseParser, ModeParams, PingParams, QuitParams, ErrorParams, DescriptorAndReasonParams, ErrorUnknownCommandParams};
-    use crate::irc::response_parser::{Channel, IrcCommand, IrcCommandName, IrcMessage, JoinParameters, Nickname, ReplyISupportParams, ReplyMyInfoParams};
+    use crate::irc::{ReplyGlobalUsersParams, ReplyListChannelsParams, ReplyWithNickAndMessageParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyLocalUsersParams, ResponseParser, ModeParams, PingParams, QuitParams, ErrorParams, DescriptorAndReasonParams, ErrorUnknownCommandParams, PrivateMessageParameters};
+    use crate::irc::response_parser::{Channel, IrcCommand, IrcCommandName, IrcMessage, JoinParameters, Nickname, ReplyISupportParams, ReplyMyInfoParams, User, UserOrChannel};
 
     fn parse_line(line: &str) -> IrcMessage {
         let mut p = ResponseParser::new();
@@ -1170,6 +1183,23 @@ mod test {
         assert_eq!(
             msg.command,
             IrcCommand::ErrorUnknownCommand(ErrorUnknownCommandParams::new(Nickname("test".to_string()), "CMD", "Unknown command"))
+        )
+    }
+
+    #[test]
+    fn test_private_message() {
+        let msg = parse_line(":CTCPServ!services@services.oftc.net PRIVMSG phillipt :VERSION\r\n");
+        assert_eq!(msg.origin, Some("CTCPServ!services@services.oftc.net".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::PrivateMessage);
+        assert_eq!(
+            msg.command,
+            IrcCommand::PrivateMessage(
+                PrivateMessageParameters::new(
+                    &User("CTCPServ".to_string()),
+                    &UserOrChannel("phillipt".to_string()),
+                    ":VERSION",
+                )
+            )
         )
     }
 }
