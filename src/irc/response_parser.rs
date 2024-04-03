@@ -190,16 +190,16 @@ impl ReplyListChannelsParams {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReplyLocalUsersParams {
     pub nick: Nickname,
-    pub current_count: usize,
-    pub max_count: usize,
+    pub current_count: Option<usize>,
+    pub max_count: Option<usize>,
     pub message: String,
 }
 
 impl ReplyLocalUsersParams {
     fn new(
         nickname: &Nickname,
-        current_count: usize,
-        max_count: usize,
+        current_count: Option<usize>,
+        max_count: Option<usize>,
         message: &str,
     ) -> Self {
         Self {
@@ -433,7 +433,7 @@ pub struct IrcMessage {
 }
 
 impl IrcMessage {
-    fn new(
+    pub fn new(
         origin: Option<String>,
         command_name: IrcCommandName,
         command: IrcCommand,
@@ -617,11 +617,24 @@ impl ResponseParser {
                 )
             }
             IrcCommandName::ReplyLocalUsers => {
+                let nick = Self::parse_nickname(&mut tokenizer);
+                // PT: Some servers (like irc.libera.chat) send the counts
+                // prior to the trailing message.
+                // Other servers (like irc.oftc.net) just send the trailing message.
+                let (current_count, max_count) = match tokenizer.peek() {
+                    Some(':') => (None, None),
+                    _ => {
+                        (
+                            Some(Self::parse_usize(&mut tokenizer)),
+                            Some(Self::parse_usize(&mut tokenizer)),
+                        )
+                    }
+                };
                 IrcCommand::ReplyLocalUsers(
                     ReplyLocalUsersParams::new(
-                        &Self::parse_nickname(&mut tokenizer),
-                        Self::parse_usize(&mut tokenizer),
-                        Self::parse_usize(&mut tokenizer),
+                        &nick,
+                        current_count,
+                        max_count,
                         &Self::parse_trailing_message(&mut tokenizer),
                     )
                 )
@@ -966,9 +979,25 @@ mod test {
             msg.command,
             IrcCommand::ReplyLocalUsers(ReplyLocalUsersParams::new(
                 &Nickname::new("phillipt"),
-                2192,
-                2366,
+                Some(2192),
+                Some(2366),
                 "Current local users 2192, max 2366",
+            ))
+        )
+    }
+
+    #[test]
+    fn test_parse_local_users2() {
+        let msg = parse_line(":coulomb.oftc.net 265 phillipt :Current local users: 8331  Max: 8633\r\n");
+        assert_eq!(msg.origin, Some("coulomb.oftc.net".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::ReplyLocalUsers);
+        assert_eq!(
+            msg.command,
+            IrcCommand::ReplyLocalUsers(ReplyLocalUsersParams::new(
+                &Nickname::new("phillipt"),
+                None,
+                None,
+                "Current local users: 8331  Max: 8633",
             ))
         )
     }
