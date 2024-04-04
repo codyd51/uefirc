@@ -3,7 +3,7 @@ use alloc::string::{String, ToString};
 use alloc::{format, vec};
 use alloc::vec::Vec;
 use core::fmt::{Display, Formatter};
-use crate::irc::IrcCommandName::EndOfNames;
+use crate::irc::IrcCommandName::Topic;
 use crate::irc::Tokenizer;
 
 const IRC_LINE_DELIMITER: &'static str = "\r\n";
@@ -294,6 +294,24 @@ impl EndOfNamesParameters {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct TopicParameters {
+    pub channel: String,
+    pub message: String,
+}
+
+impl TopicParameters {
+    fn new(
+        channel: String,
+        message: String,
+    ) -> Self {
+        Self {
+            channel,
+            message,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ModeParams {
     pub nick: Nickname,
     // PT: Not bothering to parse this deeper for now
@@ -396,6 +414,7 @@ pub enum IrcCommandName {
     PrivateMessage,
     Names,
     EndOfNames,
+    Topic,
     // PT: 'Base case' when the server sends something unrecognized
     Unparseable,
 }
@@ -416,6 +435,7 @@ impl From<&str> for IrcCommandName {
             "265" => Self::ReplyLocalUsers,
             "266" => Self::ReplyGlobalUsers,
             "250" => Self::ReplyConnectionStats,
+            "332" => Self::Topic,
             "353" => Self::Names,
             "366" => Self::EndOfNames,
             "375" => Self::ReplyMessageOfTheDayStart,
@@ -465,6 +485,7 @@ pub enum IrcCommand {
     Unparseable(String),
     Names(NamesParameters),
     EndOfNames(EndOfNamesParameters),
+    Topic(TopicParameters),
 }
 
 #[derive(Debug)]
@@ -832,6 +853,17 @@ impl ResponseParser {
                     )
                 )
             }
+            IrcCommandName::Topic => {
+                let _me = Self::parse_nickname(&mut tokenizer);
+                let channel_name = tokenizer.read_to(' ').expect("Failed to read channel name");
+                let message = Self::parse_trailing_message(&mut tokenizer);
+                IrcCommand::Topic(
+                    TopicParameters::new(
+                        channel_name,
+                        message,
+                    )
+                )
+            }
             _ => IrcCommand::Unparseable(line),
         };
 
@@ -849,7 +881,7 @@ impl ResponseParser {
 mod test {
     use alloc::string::ToString;
     use alloc::vec;
-    use crate::irc::{ReplyGlobalUsersParams, ReplyListChannelsParams, ReplyWithNickAndMessageParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyLocalUsersParams, ResponseParser, ModeParams, PingParams, QuitParams, ErrorParams, DescriptorAndReasonParams, ErrorUnknownCommandParams, PrivateMessageParameters, NamesParameters, EndOfNamesParameters};
+    use crate::irc::{ReplyGlobalUsersParams, ReplyListChannelsParams, ReplyWithNickAndMessageParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyLocalUsersParams, ResponseParser, ModeParams, PingParams, QuitParams, ErrorParams, DescriptorAndReasonParams, ErrorUnknownCommandParams, PrivateMessageParameters, NamesParameters, EndOfNamesParameters, TopicParameters};
     use crate::irc::response_parser::{Channel, IrcCommand, IrcCommandName, IrcMessage, JoinParameters, Nickname, ReplyISupportParams, ReplyMyInfoParams, User, UserOrChannel};
 
     fn parse_line(line: &str) -> IrcMessage {
@@ -1302,6 +1334,22 @@ mod test {
                 EndOfNamesParameters::new(
                     "#edk2".to_string(),
                     "End of /NAMES list".to_string(),
+                )
+            )
+        )
+    }
+
+    #[test]
+    fn test_topic() {
+        let msg = parse_line(":coulomb.oftc.net 332 phillip-testing2 #edk2 :EDK II/OVMF\r\n");
+        assert_eq!(msg.origin, Some("coulomb.oftc.net".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::Topic);
+        assert_eq!(
+            msg.command,
+            IrcCommand::Topic(
+                TopicParameters::new(
+                    "#edk2".to_string(),
+                    "EDK II/OVMF".to_string(),
                 )
             )
         )

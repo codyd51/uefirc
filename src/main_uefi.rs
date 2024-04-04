@@ -655,6 +655,9 @@ impl<'a> App<'a> {
             IrcCommand::EndOfNames(p) => {
                 // Nothing to display
             }
+            IrcCommand::Topic(p) => {
+                self.render_structured_server_notice(&format!("{} Topic", p.channel), &p.message);
+            }
             unknown => {
                 self.render_structured_server_notice("Unknown", &format!("{unknown:?}"));
                 //self.write_string(&format!("Don't know how to format: {unknown:?}"));
