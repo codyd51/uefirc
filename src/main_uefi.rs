@@ -26,6 +26,7 @@ use uefi_services::println;
 use crate::app::IrcClient;
 use crate::fs::read_file;
 use crate::gui::{ContentView, InputBoxView, TitleView};
+use crate::ipv4::IPv4Address;
 use crate::irc::{IrcCommand, IrcCommandName, IrcMessage, ResponseParser};
 use crate::ui::set_resolution;
 
@@ -448,11 +449,11 @@ impl<'a> App<'a> {
             RenderStructuredMessageAttributes::new(
                 leading_str,
                 Color::new(0, 0, 0),
-                Color::new(66, 222, 42),
-                Color::new(47, 158, 30),
+                Color::new(255, 231, 166),
+                Color::new(194, 176, 128),
                 message,
                 Color::black(),
-                Color::new(196, 242, 189),
+                Color::new(255, 243, 212),
                 Color::new(140, 173, 135),
             )
         )
@@ -473,17 +474,32 @@ impl<'a> App<'a> {
         )
     }
 
+    fn render_names(&self, channel: &str, names: &[String]) {
+        self.render_structured_message_with_attributes(
+            RenderStructuredMessageAttributes::new(
+                &format!("{channel} members"),
+                Color::black(),
+                Color::new(191, 177, 250),
+                Color::new(138, 129, 181),
+                &(", ".join(names)),
+                Color::black(),
+                Color::new(221, 215, 250),
+                Color::black(),
+            )
+        )
+    }
+
     fn render_message_from_user(&self, message_text: &str) {
         self.render_structured_message_with_attributes(
             RenderStructuredMessageAttributes::new(
-                "---->",
+                "You",
                 Color::black(),
                 Color::new(80, 224, 250),
                 Color::new(106, 150, 158),
                 message_text,
                 Color::black(),
-                Color::new(252, 199, 222),
-                Color::new(252, 199, 222),
+                Color::new(255, 255, 255),
+                Color::new(255, 255, 255),
             )
         )
     }
@@ -632,6 +648,9 @@ impl<'a> App<'a> {
             }
             IrcCommand::Join(p) => {
                 self.render_join_event(&format!("Joined {}", p.channel.0));
+            }
+            IrcCommand::Names(p) => {
+                self.render_names(&p.channel, &p.names);
             }
             unknown => {
                 self.render_structured_server_notice("Unknown", &format!("{unknown:?}"));
@@ -835,7 +854,6 @@ impl<'a> App<'a> {
 
     fn step(&self) {
         let mut irc_client = self.irc_client.borrow_mut();
-        irc_client.step();
         let mut active_connection = irc_client.active_connection.as_mut();
         let recv_buffer = &active_connection.expect("Expected an active connection").recv_buffer;
         let recv_data = recv_buffer.lock().borrow_mut().drain(..).collect::<Vec<u8>>();

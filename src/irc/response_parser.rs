@@ -257,6 +257,24 @@ impl PrivateMessageParameters {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct NamesParameters {
+    pub channel: String,
+    pub names: Vec<String>,
+}
+
+impl NamesParameters {
+    fn new(
+        channel: String,
+        names: Vec<String>,
+    ) -> Self {
+        Self {
+            channel,
+            names,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ModeParams {
     pub nick: Nickname,
     // PT: Not bothering to parse this deeper for now
@@ -357,6 +375,7 @@ pub enum IrcCommandName {
     Notice,
     Join,
     PrivateMessage,
+    Names,
     // PT: 'Base case' when the server sends something unrecognized
     Unparseable,
 }
@@ -377,6 +396,7 @@ impl From<&str> for IrcCommandName {
             "265" => Self::ReplyLocalUsers,
             "266" => Self::ReplyGlobalUsers,
             "250" => Self::ReplyConnectionStats,
+            "353" => Self::Names,
             "375" => Self::ReplyMessageOfTheDayStart,
             "372" => Self::ReplyMessageOfTheDayLine,
             "376" => Self::ReplyMessageOfTheDayEnd,
@@ -422,6 +442,7 @@ pub enum IrcCommand {
     Join(JoinParameters),
     PrivateMessage(PrivateMessageParameters),
     Unparseable(String),
+    Names(NamesParameters),
 }
 
 #[derive(Debug)]
@@ -765,6 +786,19 @@ impl ResponseParser {
                     )
                 )
             },
+            IrcCommandName::Names => {
+                let _me = Self::parse_nickname(&mut tokenizer);
+                let _channel_type = tokenizer.read_to(' ').expect("Failed to read channel type");
+                let channel_name = tokenizer.read_to(' ').expect("Failed to read channel name");
+                let names_str = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read message");
+                let names = names_str.split(" ").collect::<Vec<&str>>().iter().map(|s| s.to_string()).collect::<Vec<String>>();
+                IrcCommand::Names(
+                    NamesParameters::new(
+                        channel_name,
+                        names,
+                    )
+                )
+            },
             _ => IrcCommand::Unparseable(line),
         };
 
@@ -781,7 +815,8 @@ impl ResponseParser {
 #[cfg(test)]
 mod test {
     use alloc::string::ToString;
-    use crate::irc::{ReplyGlobalUsersParams, ReplyListChannelsParams, ReplyWithNickAndMessageParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyLocalUsersParams, ResponseParser, ModeParams, PingParams, QuitParams, ErrorParams, DescriptorAndReasonParams, ErrorUnknownCommandParams, PrivateMessageParameters};
+    use alloc::vec;
+    use crate::irc::{ReplyGlobalUsersParams, ReplyListChannelsParams, ReplyWithNickAndMessageParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyLocalUsersParams, ResponseParser, ModeParams, PingParams, QuitParams, ErrorParams, DescriptorAndReasonParams, ErrorUnknownCommandParams, PrivateMessageParameters, NamesParameters};
     use crate::irc::response_parser::{Channel, IrcCommand, IrcCommandName, IrcMessage, JoinParameters, Nickname, ReplyISupportParams, ReplyMyInfoParams, User, UserOrChannel};
 
     fn parse_line(line: &str) -> IrcMessage {
@@ -1198,6 +1233,26 @@ mod test {
                     &User("CTCPServ".to_string()),
                     &UserOrChannel("phillipt".to_string()),
                     ":VERSION",
+                )
+            )
+        )
+    }
+
+    #[test]
+    fn test_names() {
+        let msg = parse_line(":coulomb.oftc.net 353 phillip-testing2 = #test phillip-testingz noball FloodServ\r\n");
+        assert_eq!(msg.origin, Some("coulomb.oftc.net".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::Names);
+        assert_eq!(
+            msg.command,
+            IrcCommand::Names(
+                NamesParameters::new(
+                    "#test".to_string(),
+                    vec![
+                        "phillip-testingz".to_string(),
+                        "noball".to_string(),
+                        "FloodServ".to_string(),
+                    ],
                 )
             )
         )
