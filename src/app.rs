@@ -29,7 +29,13 @@ impl<'a> IrcClient<'a> {
         }
     }
 
-    pub fn connect_to_server(&mut self) {
+    pub fn connect_to_server_and_register(
+        &mut self,
+        ip_address: IPv4Address,
+        port: u16,
+        nickname: &str,
+        real_name: &str,
+    ) {
         info!("Initializing connection to IRC server...");
         let tcp_protocol = get_tcp_protocol(
             self.boot_services,
@@ -39,10 +45,12 @@ impl<'a> IrcClient<'a> {
         let connection = TcpConnection::new(
             self.boot_services,
             tcp_protocol,
-            IPv4Address::new(93, 158, 237, 2),
-            6665,
+            ip_address,
+            port,
         );
         self.active_connection = Some(connection);
+        self.set_nickname(nickname);
+        self.set_user(nickname, real_name);
     }
 
     pub fn send_line_command(&mut self, command: &str) {
@@ -75,12 +83,4 @@ impl<'a> IrcClient<'a> {
 
     // TODO(PT): Add an 'info bar' on the right that shows available channels/users
     // The primary cost is drawing, so we can only draw the first N channels
-
-    pub fn step(&mut self) {
-        if self.active_connection.is_none() {
-            self.connect_to_server();
-        }
-        let mut connection = self.active_connection.as_mut().expect("We should always be connected to the server now.");
-        //connection.step();
-    }
 }

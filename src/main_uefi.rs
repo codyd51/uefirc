@@ -902,11 +902,12 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
 
     let mut irc_client = IrcClient::new(bs);
     {
-        irc_client.connect_to_server();
-        let nickname = "phillip-testing2";
-        let real_name = "phillip@axleos.com";
-        irc_client.set_nickname(nickname);
-        irc_client.set_user(nickname, real_name);
+        irc_client.connect_to_server_and_register(
+            IPv4Address::new(109, 74, 200, 93),
+            6667,
+            "phillip-testing",
+            "phillip@axleos.com",
+        );
     }
     {
         let conn = irc_client.active_connection.as_mut();
