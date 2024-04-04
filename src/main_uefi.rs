@@ -658,6 +658,9 @@ impl<'a> App<'a> {
             IrcCommand::Topic(p) => {
                 self.render_structured_server_notice(&format!("{} Topic", p.channel), &p.message);
             }
+            IrcCommand::TopicLastSet(p) => {
+                self.render_structured_server_notice(&format!("{} Topic Update History", p.channel), &format!("Last updated by {}", p.user));
+            }
             unknown => {
                 self.render_structured_server_notice("Unknown", &format!("{unknown:?}"));
                 //self.write_string(&format!("Don't know how to format: {unknown:?}"));

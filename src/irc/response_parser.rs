@@ -3,7 +3,6 @@ use alloc::string::{String, ToString};
 use alloc::{format, vec};
 use alloc::vec::Vec;
 use core::fmt::{Display, Formatter};
-use crate::irc::IrcCommandName::Topic;
 use crate::irc::Tokenizer;
 
 const IRC_LINE_DELIMITER: &'static str = "\r\n";
@@ -312,6 +311,27 @@ impl TopicParameters {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct TopicLastSetParameters {
+    pub channel: String,
+    pub user: String,
+    pub timestamp: String,
+}
+
+impl TopicLastSetParameters {
+    fn new(
+        channel: String,
+        user: String,
+        timestamp: String,
+    ) -> Self {
+        Self {
+            channel,
+            user,
+            timestamp,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ModeParams {
     pub nick: Nickname,
     // PT: Not bothering to parse this deeper for now
@@ -415,6 +435,7 @@ pub enum IrcCommandName {
     Names,
     EndOfNames,
     Topic,
+    TopicLastSet,
     // PT: 'Base case' when the server sends something unrecognized
     Unparseable,
 }
@@ -436,6 +457,7 @@ impl From<&str> for IrcCommandName {
             "266" => Self::ReplyGlobalUsers,
             "250" => Self::ReplyConnectionStats,
             "332" => Self::Topic,
+            "333" => Self::TopicLastSet,
             "353" => Self::Names,
             "366" => Self::EndOfNames,
             "375" => Self::ReplyMessageOfTheDayStart,
@@ -486,6 +508,7 @@ pub enum IrcCommand {
     Names(NamesParameters),
     EndOfNames(EndOfNamesParameters),
     Topic(TopicParameters),
+    TopicLastSet(TopicLastSetParameters),
 }
 
 #[derive(Debug)]
@@ -864,6 +887,22 @@ impl ResponseParser {
                     )
                 )
             }
+            IrcCommandName::TopicLastSet => {
+                let _me = Self::parse_nickname(&mut tokenizer);
+                let channel_name = tokenizer.read_to(' ').expect("Failed to read channel name");
+                let last_set_by = {
+                    let last_set_by_raw = tokenizer.read_to(' ').expect("Failed to read last set by");
+                    last_set_by_raw[..last_set_by_raw.find('!').unwrap()].to_string()
+                };
+                let timestamp = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read timestamp");
+                IrcCommand::TopicLastSet(
+                    TopicLastSetParameters::new(
+                        channel_name,
+                        last_set_by,
+                        timestamp,
+                    )
+                )
+            }
             _ => IrcCommand::Unparseable(line),
         };
 
@@ -881,7 +920,7 @@ impl ResponseParser {
 mod test {
     use alloc::string::ToString;
     use alloc::vec;
-    use crate::irc::{ReplyGlobalUsersParams, ReplyListChannelsParams, ReplyWithNickAndMessageParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyLocalUsersParams, ResponseParser, ModeParams, PingParams, QuitParams, ErrorParams, DescriptorAndReasonParams, ErrorUnknownCommandParams, PrivateMessageParameters, NamesParameters, EndOfNamesParameters, TopicParameters};
+    use crate::irc::{ReplyGlobalUsersParams, ReplyListChannelsParams, ReplyWithNickAndMessageParams, ReplyListOperatorUsersParams, ReplyListUnknownUsersParams, ReplyLocalUsersParams, ResponseParser, ModeParams, PingParams, QuitParams, ErrorParams, DescriptorAndReasonParams, ErrorUnknownCommandParams, PrivateMessageParameters, NamesParameters, EndOfNamesParameters, TopicParameters, TopicLastSetParameters};
     use crate::irc::response_parser::{Channel, IrcCommand, IrcCommandName, IrcMessage, JoinParameters, Nickname, ReplyISupportParams, ReplyMyInfoParams, User, UserOrChannel};
 
     fn parse_line(line: &str) -> IrcMessage {
@@ -1350,6 +1389,23 @@ mod test {
                 TopicParameters::new(
                     "#edk2".to_string(),
                     "EDK II/OVMF".to_string(),
+                )
+            )
+        )
+    }
+
+    #[test]
+    fn test_topic_last_set() {
+        let msg = parse_line(":coulomb.oftc.net 333 phillip-testing2 #edk2 ChanServ!services@services.oftc.net 167583716\r\n");
+        assert_eq!(msg.origin, Some("coulomb.oftc.net".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::TopicLastSet);
+        assert_eq!(
+            msg.command,
+            IrcCommand::TopicLastSet(
+                TopicLastSetParameters::new(
+                    "#edk2".to_string(),
+                    "ChanServ".to_string(),
+                    "167583716".to_string(),
                 )
             )
         )
