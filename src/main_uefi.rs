@@ -2,7 +2,7 @@
 
 use alloc::format;
 use alloc::rc::Rc;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::cell::RefCell;
 use core::cmp::{max, min};
@@ -13,6 +13,7 @@ use agx_definitions::{Color, Drawable, NestedLayerSlice, Point, Rect, StrokeThic
 use agx_definitions::Size;
 use libgui::{AwmWindow, KeyCode};
 use libgui::button::Button;
+use libgui::text_view::TextView;
 use libgui::ui_elements::UIElement;
 use log::info;
 use ttf_renderer::{Font, rendered_string_size};
@@ -275,6 +276,8 @@ impl<'a> App<'a> {
 
         // TODO(PT): Share this with the content view?
         let font_size = Size::new(24, 24);
+
+        // Figure out the layout of the 'leading' / title text
         let leading_right_side_padding_px = 10;
         let rendered_leading_text_size = rendered_string_size(
             attributes.leading_text,
@@ -282,25 +285,37 @@ impl<'a> App<'a> {
             font_size,
         );
 
-        // TODO(PT): This does not take into account extra height induced by line breaks
-        let rendered_message_text_size = rendered_string_size(
+        // Figure out the layout of the 'content' / main text
+        let start_of_message_content_x = rendered_leading_text_size.width + leading_right_side_padding_px;
+        let message_left_side_padding_x = 6;
+        let message_line_width = text_view.frame().size.width - start_of_message_content_x;
+        let rendered_message_text_size = TextView::rendered_string_size(
             attributes.main_text,
             &self.font_regular,
             font_size,
+            Size::new(
+                message_line_width,
+                // We're not interested in the vertical bound
+                isize::MAX,
+            ),
+            Point::new(
+                start_of_message_content_x,
+                0,
+            )
         );
 
         // The background rectangles should take the larger size of the rendered LHS or RHS
         let background_rect_height = max(rendered_leading_text_size.height, rendered_message_text_size.height);
 
         let initial_cursor = text_view.cursor_pos();
-        let start_of_message_content_x = rendered_leading_text_size.width + leading_right_side_padding_px;
         let leading_text_background_frame = Rect::from_parts(
             initial_cursor.1,
             Size::new(
-                start_of_message_content_x,
-                background_rect_height,
+                rendered_leading_text_size.width + leading_right_side_padding_px,
+                rendered_leading_text_size.height,
             ),
         );
+
         // Background of leading text
         scroll_view.get_slice().fill_rect(
             leading_text_background_frame,
@@ -320,8 +335,8 @@ impl<'a> App<'a> {
             font_size,
             attributes.leading_text_color,
         );
+
         let mut cursor = text_view.cursor_pos();
-        let message_left_side_padding_x = 6;
         cursor.1.x = start_of_message_content_x + message_left_side_padding_x;
         text_view.set_cursor_pos(cursor);
 
@@ -341,16 +356,29 @@ impl<'a> App<'a> {
             attributes.main_text_background_color,
             StrokeThickness::Filled,
         );
-        /*
-        // Background border of leading text
+        // Edge case, we'll need to draw the background under the left hand side of the leading text
+        // The layout of the main text broke off into this area as the text view can't know that we
+        // didn't want to do layout underneath the leading text
+        if rendered_message_text_size.height > rendered_leading_text_size.height {
+            let region_beneath_leading_text = Rect::from_parts(
+                Point::new(
+                    initial_cursor.1.x,
+                    initial_cursor.1.y + rendered_leading_text_size.height,
+                ),
+                Size::new(
+                    rendered_leading_text_size.width + leading_right_side_padding_px,
+                    rendered_message_text_size.height - rendered_leading_text_size.height,
+                ),
+            );
+            scroll_view.get_slice().fill_rect(
+                region_beneath_leading_text,
+                attributes.main_text_background_color,
+                StrokeThickness::Filled,
+            );
+        }
+
         // TODO(PT): It looks like outline rects that are spread across multiple scroll view tiles render edges
-        // at tile boundaries, which is incorrect
-        scroll_view.get_slice().fill_rect(
-            message_background_frame,
-            attributes.main_text_background_border_color,
-            StrokeThickness::Width(1),
-        );
-        */
+        // at tile boundaries, which is incorrect.
         text_view.draw_string_with_font(
             attributes.main_text,
             &self.font_regular,
