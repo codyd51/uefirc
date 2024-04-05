@@ -16,7 +16,7 @@ The GUI toolkit comes from [axle OS](https://github.com/codyd51/axle). I think t
 
 _NO kernel. NO GUI toolkit. NO scheduler. NO memory protection. Just you, the motherboard firmware, and all your pals across the internet._
 
-https://github.com/codyd51/uefirc/assets/4972184/a94b7c90-5fb6-4625-834a-f2b0e3257de8
+https://github.com/codyd51/uefirc/assets/4972184/123da2d1-f99f-49c3-9850-8ce2f5be31de
 
 UEFIRC comes with keyboard and mouse support by leveraging UEFI's [Simple Text Protocol](https://uefi.org/specs/UEFI/2.9_A/12_Protocols_Console_Support.html#efi-simple-text-input-protocol) and [Simple Pointer Protocol](https://uefi.org/specs/UEFI/2.9_A/12_Protocols_Console_Support.html#simple-pointer-protocol).
 
