@@ -7,7 +7,7 @@ from build_utils import run_and_check
 
 
 _REPO_ROOT = Path(__file__).parents[1]
-_EFI_ROOT = _REPO_ROOT / "esp"
+_EFI_ROOT = _REPO_ROOT / "efi_filesystem"
 _ARCH_TARGET_NAME = "x86_64-unknown-uefi"
 
 
@@ -51,15 +51,11 @@ def run_in_qemu():
 
 
 def run_hosted():
-    run_and_check(
-        [
-            "cargo", "run",
-        ]
-    )
+    run_and_check(["cargo", "run", "--release"])
 
 
 def compile_and_run():
-    built_uefi_app_path = _REPO_ROOT / "target" / _ARCH_TARGET_NAME / "debug" / "uefirc.efi"
+    built_uefi_app_path = _REPO_ROOT / "target" / _ARCH_TARGET_NAME / "release" / "uefirc.efi"
     staged_uefi_app_path = _EFI_ROOT / "efi" / "boot" / "bootx64.efi"
 
     # Remove the build products, so we're sure they were rebuilt successfully
@@ -73,6 +69,7 @@ def compile_and_run():
         [
             "cargo",
             "build",
+            "--release",
             "--features", "run_in_uefi",
             #"--features", "run_hosted",
             "--target",
