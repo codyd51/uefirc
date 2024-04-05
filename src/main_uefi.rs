@@ -882,6 +882,65 @@ impl<'a> App<'a> {
     }
 }
 
+fn parse_config_file(boot_services: &BootServices) -> (
+    IPv4Address,
+    u16,
+    String,
+    String,
+) {
+    // PT: Not going to bother making an ergonomic parse here for now - this is intentionally basic
+    let config_bytes = read_file(boot_services, "EFI\\Boot\\config.txt");
+    let config_str = match String::from_utf8(config_bytes) {
+        Ok(s) => s,
+        Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+    };
+    let config_lines: Vec<&str> = config_str.lines().collect();
+
+    let mut server_ip = None;
+    let mut server_port = None;
+    let mut nickname = None;
+    let mut real_name = None;
+    for line in config_lines.iter() {
+        // Skip comments
+        if line.starts_with('#') {
+            continue;
+        }
+        let line_parts: Vec<&str> = line.split('=').collect();
+        let (&prefix, &suffix) = match line_parts.as_slice() {
+            [prefix, suffix] => (prefix, suffix),
+            _ => panic!("Expected exactly two parts"),
+        };
+        match prefix {
+            "server_ip_address" => {
+                let ip_parts: Vec<&str> = suffix.split('.').collect();
+                if ip_parts.len() != 4 {
+                    panic!("IP string does not contain exactly 4 octets");
+                }
+                let mut octets = [0u8; 4];
+                for (i, part) in ip_parts.iter().enumerate() {
+                    match part.parse::<u8>() {
+                        Ok(num) => octets[i] = num,
+                        Err(_) => panic!("Invalid octet {part}"),
+                    }
+                }
+                server_ip = Some(IPv4Address::new(octets[0], octets[1], octets[2], octets[3]));
+            },
+            "server_port" => {
+                server_port = Some(u16::from_str_radix(suffix, 10).expect("Failed to parse a port"));
+            },
+            "nickname" => nickname = Some(suffix.to_string()),
+            "real_name" => real_name = Some(suffix.to_string()),
+            _ => panic!("Unrecognized config key {prefix}"),
+        }
+    }
+    return (
+        server_ip.expect("No server IP address specified"),
+        server_port.expect("No server IP address specified"),
+        nickname.expect("No server IP address specified"),
+        real_name.expect("No server IP address specified"),
+    )
+}
+
 pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     uefi_services::init(&mut system_table).unwrap();
     let bs = system_table.boot_services();
@@ -909,11 +968,12 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
 
     let mut irc_client = IrcClient::new(bs);
     {
+        let (ip_address, port, nickname, real_name) = parse_config_file(bs);
         irc_client.connect_to_server_and_register(
-            IPv4Address::new(109, 74, 200, 93),
-            6667,
-            "phillip-testing",
-            "phillip@axleos.com",
+            ip_address,
+            port,
+            &nickname,
+            &real_name,
         );
     }
     {
