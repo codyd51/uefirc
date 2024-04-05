@@ -1,9 +1,7 @@
-
 use alloc::boxed::Box;
 use alloc::rc::Rc;
 use agx_definitions::{Color, LikeLayerSlice, Rect, RectInsets, Size, Point};
 use libgui::bordered::Bordered;
-use libgui::text_view::TextView;
 use agx_definitions::{Drawable, NestedLayerSlice};
 use libgui::KeyCode;
 use libgui::ui_elements::UIElement;

@@ -20,7 +20,6 @@ impl TCPv4TransmitDataHandle {
     fn total_layout_size(fragment_count: usize) -> usize {
         let size_of_fragments = mem::size_of::<ManuallyDrop<TCPv4FragmentData>>() * fragment_count;
         let ret = mem::size_of::<Self>() + size_of_fragments;
-        //info!("Total layout size: {ret}");
         ret
     }
 

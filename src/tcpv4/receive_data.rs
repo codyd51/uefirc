@@ -5,7 +5,6 @@ use core::marker::PhantomData;
 use core::mem;
 use core::mem::ManuallyDrop;
 use core::ptr::copy_nonoverlapping;
-use log::info;
 use crate::tcpv4::TCPv4FragmentData;
 
 /// This type is necessary because the underlying structure has a flexible array member.
@@ -25,7 +24,6 @@ impl<'a> TCPv4ReceiveDataHandle<'a> {
     fn total_layout_size(fragment_count: usize) -> usize {
         let size_of_fragments = mem::size_of::<ManuallyDrop<TCPv4FragmentData>>() * fragment_count;
         let ret = mem::size_of::<Self>() + size_of_fragments;
-        //info!("Total layout size: {ret}");
         ret
     }
 
@@ -101,7 +99,6 @@ impl TCPv4ReceiveData {
                 let fragment = &*fragment_ptr;
                 let fragment_buf = fragment.fragment_buf as *const u8;
                 let fragment_slice = core::slice::from_raw_parts(fragment_buf, self.data_length as _);
-                //info!("Fragment {i} {fragment:?} {fragment_buf:?} count {c} slice {fragment_slice:?}");
                 out.extend_from_slice(fragment_slice);
             }
         }

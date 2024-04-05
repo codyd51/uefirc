@@ -10,7 +10,6 @@ use alloc::rc::Weak;
 use libgui::view::View;
 use libgui_derive::{Bordered, Drawable, NestedLayerSlice, UIElement};
 use alloc::vec::Vec;
-use libgui::label::Label;
 use ttf_renderer::Font;
 
 #[derive(Drawable, NestedLayerSlice, UIElement, Bordered)]

@@ -240,6 +240,7 @@ impl<'a> App<'a> {
     }
 
     fn bind_scroll_offset_to_scrollable_region(&self, scroll_offset: Point) -> Point {
+        // TODO(PT): Re-enable
         /*
         let scrollable_region = self.scrollable_region_size();
         Point::new(
@@ -663,7 +664,6 @@ impl<'a> App<'a> {
             }
             unknown => {
                 self.render_structured_server_notice("Unknown", &format!("{unknown:?}"));
-                //self.write_string(&format!("Don't know how to format: {unknown:?}"));
             }
         }
     }
@@ -981,8 +981,6 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
         let conn = conn.unwrap();
         Rc::clone(&conn).set_up_receive_signal_handler();
     }
-    // Theory: we need to do the same careful stuff for transmit as for receive
-    // To test, going to try to only set up the RX handler after doing our initial transmits
 
     let pointer_handle = bs.get_handle_for_protocol::<Pointer>().expect("Failed to find handle for Pointer protocol");
     let mut pointer = bs.open_protocol_exclusive::<Pointer>(pointer_handle).expect("failed to open proto");
@@ -1002,8 +1000,6 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
         irc_client,
     );
 
-    //app.handle_recv_data(&("This is a test of a bnch of text that gets sent over the network pipe and sent to the client where it is then rendered and rendered again perhaps on a new line considering its length").as_bytes());
-
     loop {
         app.handle_keyboard_updates(&mut system_table);
         app.handle_mouse_updates(&mut pointer, pointer_resolution);
@@ -1011,4 +1007,3 @@ pub fn main(_image_handle: Handle, mut system_table: SystemTable<Boot>) -> Statu
         app.draw_and_push_to_display(&mut graphics_protocol);
     }
 }
-
