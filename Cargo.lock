@@ -36,6 +36,7 @@ checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
 [[package]]
 name = "agx_definitions"
 version = "0.1.0"
+source = "git+https://github.com/codyd51/axle?branch=paging-demo#1c84aa0293c45ef187e819a3199f24de63745af0"
 dependencies = [
  "axle_rt",
  "bresenham",
@@ -140,6 +141,7 @@ checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 [[package]]
 name = "awm_messages"
 version = "0.1.0"
+source = "git+https://github.com/codyd51/axle?branch=paging-demo#1c84aa0293c45ef187e819a3199f24de63745af0"
 dependencies = [
  "agx_definitions",
  "axle_rt",
@@ -150,6 +152,7 @@ dependencies = [
 [[package]]
 name = "axle_rt"
 version = "0.1.0"
+source = "git+https://github.com/codyd51/axle?branch=paging-demo#1c84aa0293c45ef187e819a3199f24de63745af0"
 dependencies = [
  "axle_rt_derive",
  "cstr_core",
@@ -158,6 +161,7 @@ dependencies = [
 [[package]]
 name = "axle_rt_derive"
 version = "0.1.0"
+source = "git+https://github.com/codyd51/axle?branch=paging-demo#1c84aa0293c45ef187e819a3199f24de63745af0"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -473,6 +477,7 @@ dependencies = [
 [[package]]
 name = "file_manager_messages"
 version = "0.1.0"
+source = "git+https://github.com/codyd51/axle?branch=paging-demo#1c84aa0293c45ef187e819a3199f24de63745af0"
 dependencies = [
  "axle_rt",
  "axle_rt_derive",
@@ -758,6 +763,7 @@ checksum = "13e3bf6590cbc649f4d1a3eefc9d5d6eb746f5200ffb04e5e142700b8faa56e7"
 [[package]]
 name = "libgui"
 version = "0.1.0"
+source = "git+https://github.com/codyd51/axle?branch=paging-demo#1c84aa0293c45ef187e819a3199f24de63745af0"
 dependencies = [
  "agx_definitions",
  "awm_messages",
@@ -777,6 +783,7 @@ dependencies = [
 [[package]]
 name = "libgui_derive"
 version = "0.1.0"
+source = "git+https://github.com/codyd51/axle?branch=paging-demo#1c84aa0293c45ef187e819a3199f24de63745af0"
 dependencies = [
  "agx_definitions",
  "quote",
@@ -1566,6 +1573,7 @@ checksum = "17f77d76d837a7830fe1d4f12b7b4ba4192c1888001c7164257e4bc6d21d96b4"
 [[package]]
 name = "ttf_renderer"
 version = "0.1.0"
+source = "git+https://github.com/codyd51/axle?branch=paging-demo#1c84aa0293c45ef187e819a3199f24de63745af0"
 dependencies = [
  "agx_definitions",
  "axle_rt",
