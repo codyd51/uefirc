@@ -481,7 +481,7 @@ impl<'a> App<'a> {
                 Color::black(),
                 Color::new(191, 177, 250),
                 Color::new(138, 129, 181),
-                &(", ".join(names)),
+                &names.join(", "),
                 Color::black(),
                 Color::new(221, 215, 250),
                 Color::black(),
