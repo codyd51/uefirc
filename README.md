@@ -6,15 +6,17 @@ UEFIRC is a graphical UEFI IRC client. Connect to an IRC server, chat and read m
 
 _50 years of computing, yet no solution for IRC software that can also fry your motherboard. Until now._
 
+<p align="center">
+  <img src="./readme_images/qemu_screenshot.png" width="800">
+</p>  
+
 UEFIRC is written in Rust and leverages [uefi-rs](https://github.com/rust-osdev/uefi-rs). 
 
 The GUI toolkit comes from [axle OS](https://github.com/codyd51/axle). I think that this is the first time anyone has put TrueType in UEFI.
 
 _NO kernel. NO GUI toolkit. NO scheduler. NO memory protection. Just you, the motherboard firmware, and all your pals across the internet._
 
-<p align="center">
-  <img src="./readme_images/qemu_screenshot.png" width="800">
-</p>  
+https://github.com/codyd51/uefirc/assets/4972184/a94b7c90-5fb6-4625-834a-f2b0e3257de8
 
 UEFIRC comes with keyboard and mouse support by leveraging UEFI's [Simple Text Protocol](https://uefi.org/specs/UEFI/2.9_A/12_Protocols_Console_Support.html#efi-simple-text-input-protocol) and [Simple Pointer Protocol](https://uefi.org/specs/UEFI/2.9_A/12_Protocols_Console_Support.html#simple-pointer-protocol).
 
