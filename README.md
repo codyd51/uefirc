@@ -42,10 +42,10 @@ Modify `config.toml` to change these values.
 
 ### Precompiled release
 
-Download the [latest release]. Run this command:
+Download the [latest release](https://github.com/codyd51/uefirc/releases/). Run this command:
 
 ```bash
-qemu-system-x86_64 -bios ./OVMF_with_mouse_support.fd -monitor stdio -m 4G -vga virtio -device virtio-rng-pci -device virtio-mouse-pci -usb "device usb-mouse" -drive format=raw,file=fat:rw:./efi_root/
+qemu-system-x86_64 -bios ./OVMF_with_mouse_support.fd -monitor stdio -m 4G -vga virtio -device virtio-rng-pci -device virtio-mouse-pci -usb "device usb-mouse" -drive format=raw,file=fat:rw:./efi_filesystem/
 ```
 
 ### Compile at home
