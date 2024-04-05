@@ -1,0 +1,8 @@
+# The IP(v4) address of the IRC server
+server_ip_address=109.74.200.93
+# The port that the server is exposing IRC on (must be non-TLS)
+server_port=6667
+# Your nickname
+nickname=phillip-testing-config
+# Your 'real name'
+real_name=phillip@axleos.com
