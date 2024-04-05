@@ -32,9 +32,21 @@ UEFIRC comes with a [blog post](https://axleos.com/an-irc-client-in-your-motherb
 
 The IRC server, and the identity of the user, are controlled by a configuration file in the EFI filesystem.
 
-Modify `configuration.toml` to change these values.
+Modify `config.toml` to change these values.
 
 ## Running
+
+*NOTE*: If you are not running macOS, you'll be unable to use [QEMU's vmnet network backend](https://axleos.com/adding-vmnet-support-to-qemu/), and will need to set up a network backend that can bridge packets into the guest.
+
+### Precompiled release
+
+Download the [latest release]. Run this command:
+
+```bash
+qemu-system-x86_64 -bios ./OVMF_with_mouse_support.fd -monitor stdio -m 4G -vga virtio -device virtio-rng-pci -device virtio-mouse-pci -usb "device usb-mouse" -drive format=raw,file=fat:rw:./efi_root/
+```
+
+### Compile at home
 
 UEFIRC uses a small (no-dependency) Python 3.7+ script to coordinate the build. Build and run:
 
