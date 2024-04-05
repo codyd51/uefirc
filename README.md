@@ -20,7 +20,7 @@ UEFIRC comes with keyboard and mouse support by leveraging UEFI's [Simple Text P
 
 Most notably, UEFIRC implements a memory-safe wrapper around UEFI's TCP implementation. 
 
-Here's me saying hello to the UEFI development chat _from_ UEFI itself.
+Here's me saying hello to the UEFI development chat from UEFI itself.
 
 <p align="center">
   <img src="./readme_images/edk_hello.png" width="800">

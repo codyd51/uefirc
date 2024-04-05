@@ -39,10 +39,10 @@ def run_in_qemu():
         # Connect a FAT filesystem that hosts the UEFI application
         "-drive",
         f"format=raw,file=fat:rw:{_EFI_ROOT.relative_to(_REPO_ROOT).as_posix()}",
-    ],
+    ]
     # If we're running on an arm64 Mac, prepend an architecture selector to ensure we don't emulate QEMU
     if is_arm64_mac():
-        argument_list  = ["arch", "-arm64", *argument_list]
+        argument_list = ["arch", "-arm64", *argument_list]
 
     run_and_check(
         argument_list,
