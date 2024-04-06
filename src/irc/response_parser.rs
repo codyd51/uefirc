@@ -571,7 +571,10 @@ impl ResponseParser {
     }
 
     fn parse_trailing_message(tokenizer: &mut Tokenizer) -> String {
-        tokenizer.match_str(":");
+        // The colon is only included if necessary to disambiguate the message components
+        if tokenizer.peek() == Some(':') {
+            tokenizer.match_str(":");
+        }
         tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a message")
     }
 
@@ -830,7 +833,7 @@ impl ResponseParser {
                 )
             },
             IrcCommandName::Join => {
-                let channel = tokenizer.read_to_str(IRC_LINE_DELIMITER).expect("Failed to read a channel name");
+                let channel = Self::parse_trailing_message(&mut tokenizer);
                 if channel.contains(" ") {
                     // Only clients can specify multiple channels
                     panic!("Multiple channels mentioned, servers should not send multiple channels?")
@@ -1271,6 +1274,23 @@ mod test {
     }
 
     #[test]
+    fn test_parse_mode2() {
+        let msg = parse_line(":coulomb.oftc.net MODE #zzzz13 +nt\r\n");
+        assert_eq!(msg.origin, Some("coulomb.oftc.net".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::Mode);
+        assert_eq!(
+            msg.command,
+            IrcCommand::Mode(
+                ModeParams::new(
+                    // TODO(PT): This should be a UserOrChannel?
+                    &Nickname("#zzzz13".to_string()),
+                    "+nt"
+                )
+            )
+        )
+    }
+
+    #[test]
     fn test_parse_ping() {
         let msg = parse_line("PING :copper.libera.chat\r\n");
         assert_eq!(msg.origin, None);
@@ -1363,6 +1383,22 @@ mod test {
     }
 
     #[test]
+    fn test_names2() {
+        let msg = parse_line(":coulomb.oftc.net 353 phillipt = #zzzz13 :@phillipt\r\n");
+        assert_eq!(msg.origin, Some("coulomb.oftc.net".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::Names);
+        assert_eq!(
+            msg.command,
+            IrcCommand::Names(
+                NamesParameters::new(
+                    "#zzzz13".to_string(),
+                    vec![":@phillipt".to_string()],
+                )
+            )
+        )
+    }
+
+    #[test]
     fn test_end_of_names() {
         let msg = parse_line(":coulomb.oftc.net 366 phillip-testing2 #edk2 :End of /NAMES list\r\n");
         assert_eq!(msg.origin, Some("coulomb.oftc.net".to_string()));
@@ -1373,6 +1409,22 @@ mod test {
                 EndOfNamesParameters::new(
                     "#edk2".to_string(),
                     "End of /NAMES list".to_string(),
+                )
+            )
+        )
+    }
+
+    #[test]
+    fn test_end_of_names2() {
+        let msg = parse_line(":coulomb.oftc.net 366 phillipt #zzzz13 :End of /NAMES list.\r\n");
+        assert_eq!(msg.origin, Some("coulomb.oftc.net".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::EndOfNames);
+        assert_eq!(
+            msg.command,
+            IrcCommand::EndOfNames(
+                EndOfNamesParameters::new(
+                    "#zzzz13".to_string(),
+                    "End of /NAMES list.".to_string(),
                 )
             )
         )
@@ -1406,6 +1458,21 @@ mod test {
                     "#edk2".to_string(),
                     "ChanServ".to_string(),
                     "167583716".to_string(),
+                )
+            )
+        )
+    }
+
+    #[test]
+    fn test_join() {
+        let msg = parse_line(":phillipt!~phillipt@86.11.226.171 JOIN :#zzzz13\r\n");
+        assert_eq!(msg.origin, Some("phillipt!~phillipt@86.11.226.171".to_string()));
+        assert_eq!(msg.command_name, IrcCommandName::Join);
+        assert_eq!(
+            msg.command,
+            IrcCommand::Join(
+                JoinParameters::new(
+                    &Channel("#zzzz13".to_string()),
                 )
             )
         )
