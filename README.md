@@ -14,7 +14,7 @@ UEFIRC is written in Rust and leverages [uefi-rs](https://github.com/rust-osdev/
 
 The GUI toolkit comes from [axle OS](https://github.com/codyd51/axle). I think that this is the first time anyone has put TrueType in UEFI.
 
-_NO kernel. NO GUI toolkit. NO scheduler. NO memory protection. Just you, the motherboard firmware, and all your pals across the internet._
+_NO kernel. NO scheduler. NO memory protection. Just you, the motherboard firmware, and all your pals across the internet._
 
 https://github.com/codyd51/uefirc/assets/4972184/123da2d1-f99f-49c3-9850-8ce2f5be31de
 
