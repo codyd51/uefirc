@@ -7,8 +7,8 @@ edition = "2021"
 
 [dependencies]
 log = "0.4.20"
-uefi = { version = "0.26.0", features = ["alloc"], optional = true }
-uefi-services = { version = "0.23.0", optional = true }
+uefi = { version = "0.27.0", features = ["alloc"], optional = true }
+uefi-services = { version = "0.24.0", optional = true }
 ttf_renderer = { git = "https://github.com/codyd51/axle", branch="paging-demo" }
 agx_definitions = { git = "https://github.com/codyd51/axle", branch="paging-demo" }
 libgui = { git = "https://github.com/codyd51/axle", branch="paging-demo" }
